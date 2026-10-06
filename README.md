@@ -1,6 +1,10 @@
 # Onroad (JDM touge drifting)
 
-A JDM touge drifting game built on the Offroad Defender engine. **See PLAN.md** for what carries over, what gets replaced and the build order. Right now it is still the offroad game, unchanged; the rest of this README describes that game.
+A JDM touge drifting game built on the Offroad Defender engine. **See PLAN.md** for what carries over, what gets replaced and the build order.
+
+By default the game drives a **Nissan Silvia S15** (RWD drift setup, `public/models/s15.glb`) on **Ebisu North** (converted from Assetto Corsa, `public/models/ebisu_north.glb`). The old game is still in the code while it gets replaced: `?car=defender` brings back the Defender 110, `?map=offroad` the procedural offroad map, `?trees=1` the Ebisu trees. Settings and tuning are saved under `onroad.*` keys in localStorage, separate from the offroad game's `offroad.*` keys on the same `localhost:5175` origin.
+
+Much of the UI (controls list, menu notes, HUD warnings) and the sections below still describe the offroad game.
 
 ## Assetto Corsa tracks and cars
 
@@ -30,7 +34,7 @@ npm run simtest    # headless physics checks (settle, accel, brake, slope, climb
 See **DEVNOTES.md** for conventions, baselines, known traps, testing workflow and the backlog.
 
 ## Controls
-**Esc** (gamepad **Menu**) pauses and opens the menu: **Locations** (teleport), **Settings** (gearbox, camera, time of day, sound and volume, units, HUD options) and the full **Controls** list. The first start shows a short controls card. Settings are saved in the browser.
+**Esc** (gamepad **Menu**) pauses and opens the menu: **Locations** (teleport), **Settings** (gearbox, camera, time of day, sound and volume, units, HUD options) and the full **Controls** list. Settings are saved in the browser. **Tab** opens the tuning panel (per car: engine, gearing, rear diff, tyres, suspension, brakes, mass, steering lock); the (i) button there shows the explanations.
 
 | Keyboard | Gamepad | Action |
 |---|---|---|

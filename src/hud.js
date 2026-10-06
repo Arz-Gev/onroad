@@ -358,7 +358,7 @@ export class HUD {
     const neutral = grow('neutral', d.running && !inGear && thr > 0.5 && (d.mode === 'manual' || sp > 0.8));
     const stuck = grow('stuck', d.running && inGear && thr > 0.6 && sp < 0.6 && v.up.y > 0.35);
     let key = null, html = '';
-    if (rolled > 1.0) { key = 'rolled'; html = `Rolled over. Press ${k('recover')} to put the truck back on its wheels.`; }
+    if (rolled > 1.0) { key = 'rolled'; html = `Rolled over. Press ${k('recover')} to put the car back on its wheels.`; }
     else if (engine > 0.6) { key = 'engine'; html = `Engine ${d.stalled ? 'stalled' : 'off'}. Press ${k('engineStart')} to start it.`; }
     else if (neutral > 1.2) { key = 'neutral'; html = d.mode === 'manual' ? `Gearbox in neutral. Press ${k('shiftUp')} for 1st, ${k('shiftDown')} for reverse.` : `Selector in ${d.selector}. Press ${k('shiftUp')} for Drive${d.selector === 'P' ? ` (reverse: ${k('shiftUp')} once)` : ''}.`; }
     else if (stuck > 3) {
@@ -506,7 +506,7 @@ const DT_MESSAGES = [
   [/^Starting/, () => 'Starting…', '', 'engine'],
   [/^Grind!/, k => `Grind! Use the clutch ${k('clutch')} or match the revs`, 'warn', 'shift'],
   [/^Too fast for reverse/, () => 'Too fast for reverse', 'warn', 'shift'],
-  [/^Stop to change transfer range/, () => 'Stop the truck to change the transfer range', 'warn', 'range'],
+  [/^Stop to change transfer range/, () => 'Stop the car to change the transfer range', 'warn', 'range'],
   [/^Auto clutch OFF/, k => `Auto-clutch off · hold ${k('clutch')} for the clutch`, '', 'gearbox'],
   [/^Auto clutch ON/, () => 'Auto-clutch on', 'good', 'gearbox'],
   [/^Manual 5-speed \(clutch pedal/, k => `Manual 5-speed · clutch pedal on ${k('clutch')}`, '', 'gearbox'],

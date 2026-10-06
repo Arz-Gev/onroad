@@ -1,5 +1,5 @@
 import base64, http.server, os, urllib.parse
-OUT = os.environ.get('SHOT_DIR', '/tmp/offroad-shots')
+OUT = os.environ.get('SHOT_DIR', '/tmp/onroad-shots')
 os.makedirs(OUT, exist_ok=True)
 class H(http.server.BaseHTTPRequestHandler):
     def _cors(self):
