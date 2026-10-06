@@ -41,11 +41,16 @@ function addDetail(m, dir, aniso) {
   m.customProgramCacheKey = () => 'track-detail';
 }
 
-export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer }) {
+export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer, trees = false }) {
   const gltf = await loader.loadAsync(url);
   const root = gltf.scene;
   const info = root.userData || {};
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  // dropped: the AC marker boxes (AC_* meshes, invisible in AC; spawns come from the scene extras) and,
+  // unless asked for, the tree cards (TREE.* materials). Both are visual only, no colliders.
+  const drop = [];
+  root.traverse(o => { if (o.isMesh && (/^AC_/.test(o.name) || (!trees && /^TREE/.test(o.material.name)))) drop.push(o); });
+  for (const o of drop) { o.removeFromParent(); o.geometry.dispose(); }
   root.updateMatrixWorld(true);
   const dir = url.replace(/\.glb$/, '/');
 
@@ -77,6 +82,10 @@ export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer
       if (GROUND.has(key)) ground.add(col.handle);
     });
   }
+
+  // scene queries see new colliders only after a step (the world holds nothing else yet); without it the
+  // first heightAt (the spawn height) misses the ground and the car starts 50 m under the track
+  world.step();
 
   // ground height under (x, z): the highest ground collider below y = 600
   const ray = new RAPIER.Ray({ x: 0, y: 600, z: 0 }, { x: 0, y: -1, z: 0 });
