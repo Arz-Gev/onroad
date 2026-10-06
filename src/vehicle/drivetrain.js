@@ -136,7 +136,9 @@ export class Drivetrain {
     return this.selector;
   }
 
-  say(msg) { this.message = { text: msg, t: 2.2 }; }
+  // events for the HUD: an id from src/messages.js (no UI text here). State changes (mode, range, locks,
+  // diff) are not events: the HUD shows the state itself. seq lets the HUD see a repeat of the same id.
+  say(id, params) { this.message = { id, params, seq: (this.message?.seq || 0) + 1 }; }
 
   // ---------------------------------------------------------------- commands
   toggleMode() {
@@ -144,54 +146,47 @@ export class Drivetrain {
     this.manualGear = 0; this.selector = 'N'; this.autoGear = 1; this.shift = null; this.lockup = 0;
     this.updateInertia();
     this.w[1] = this.w[0];
-    const P = this.P;
-    this.say(this.mode === 'auto' ? `Automatic (${P.auto.ratios.length}-speed, torque converter)` : `Manual ${P.manual.ratios.length}-speed` + (this.clutchAssist ? ' (auto clutch)' : ' (clutch pedal: Shift)'));
   }
   toggleClutchAssist() {
     this.clutchAssist = !this.clutchAssist;
-    this.say(this.clutchAssist ? 'Auto clutch ON' : 'Auto clutch OFF: hold Shift for the clutch');
   }
   toggleRange(speed) {
-    if (this.fixedRwd) { this.say('No transfer case on this car'); return; }
-    if (Math.abs(speed) > 1.5) { this.say('Stop to change transfer range'); return; }
-    if (this.rwd && this.range === 'high') { this.say('Select 4WD before LOW range'); return; }
+    if (this.fixedRwd) { this.say('noFeature', { what: 'Transfer case' }); return; }
+    if (Math.abs(speed) > 1.5) { this.say('rangeStop'); return; }
+    if (this.rwd && this.range === 'high') { this.say('rangeNeeds4wd'); return; }
     this.range = this.range === 'high' ? 'low' : 'high';
-    this.say(this.range === 'low' ? 'LOW range engaged' : 'HIGH range engaged');
   }
   toggleCenterLock() {
-    if (this.fixedRwd) { this.say('Rear-wheel drive: no centre diff'); return; }
-    if (this.rwd) { this.say('Centre lock needs 4WD'); return; }
-    this.centerLock = !this.centerLock; this.say(this.centerLock ? 'Centre diff LOCKED' : 'Centre diff open');
+    if (this.fixedRwd) { this.say('noFeature', { what: 'Centre diff' }); return; }
+    if (this.rwd) { this.say('centreNeeds4wd'); return; }
+    this.centerLock = !this.centerLock;
   }
   toggleRwd(speed) {
-    if (this.fixedRwd) { this.say('Rear-wheel drive only'); return; }
-    if (!this.rwd && this.range === 'low') { this.say('RWD only in HIGH range'); return; }
-    if (Math.abs(speed) > 8) { this.say('Slow down to change 2WD / 4WD'); return; }
+    if (this.fixedRwd) { this.say('noFeature', { what: '4WD' }); return; }
+    if (!this.rwd && this.range === 'low') { this.say('rwdNeedsHigh'); return; }
+    if (Math.abs(speed) > 8) { this.say('rwdSlowDown'); return; }
     this.rwd = !this.rwd;
     if (this.rwd) this.centerLock = false;
-    this.say(this.rwd ? '2WD: rear-wheel drive' : '4WD: all wheels driven');
   }
   cycleAxleLockers() {
     if (this.fixedRwd) {
       this.rearDiff = { welded: 'lsd', lsd: 'open', open: 'welded' }[this.rearDiff];
       this.rearLock = this.rearDiff === 'welded';
-      this.say({ welded: 'Rear diff: welded', lsd: 'Rear diff: LSD (1.5-way)', open: 'Rear diff: open' }[this.rearDiff]);
       return;
     }
-    if (!this.rearLock) { this.rearLock = true; this.say('Rear locker ON'); }
-    else if (!this.frontLock) { this.frontLock = true; this.say('Front + rear lockers ON'); }
-    else { this.rearLock = false; this.frontLock = false; this.say('Axle lockers off'); }
+    if (!this.rearLock) this.rearLock = true;
+    else if (!this.frontLock) this.frontLock = true;
+    else { this.rearLock = false; this.frontLock = false; }
   }
   startEngine() {
     const E0 = this.P.engine;
-    if (this.running) { this.say('Engine is already running (O switches it off)'); return; }
+    if (this.running) { this.say('engineRunning'); return; }
     if (this.mode === 'manual' && !this.clutchAssist && this.manualGear !== 0 && this.clutchPedal < 0.6) {
-      this.say('In gear: hold the clutch (Shift) or select neutral, then press I');
+      this.say('engineInGear');
       return;
     }
     // cranking time before it fires: catchMin + random catchSpread (player-tuned: 0.35-0.5 s)
     this.starterTime = 3; this.crankTime = 0; this.catchAt = (E0.catchMin ?? 0.35) + (E0.catchSpread ?? 0.15) * Math.random();
-    this.say('Starting...');
   }
   stopEngine() { this.running = false; }
   setSelector(s) {
@@ -209,7 +204,7 @@ export class Drivetrain {
     }
     const target = clamp(this.manualGear + dir, -1, this.P.manual.ratios.length);
     if (target === this.manualGear) return;
-    if (target === -1 && this.wheelMean() * this.P.tire.radius > 1.5) { this.say('Too fast for reverse'); this.grind = 0.35; return; }
+    if (target === -1 && this.wheelMean() * this.P.tire.radius > 1.5) { this.say('reverseTooFast'); this.grind = 0.35; return; }
     if (this.clutchAssist) {
       this.shift = { phase: 'out', t: 0, target };
       return;
@@ -221,13 +216,12 @@ export class Drivetrain {
     if (Math.abs(wIn - this.w[0]) < 28) { this.manualGear = target; this.sinceShift = 0; return; }
     this.manualGear = 0;
     this.grind = 0.45;
-    this.say('Grind! Use the clutch (Shift) or match revs');
+    this.say('grind');
   }
 
   // ---------------------------------------------------------------- per step logic
   control(h, ctl, speed) {
     const P = this.P, E = P.engine;
-    if (this.message) { this.message.t -= h; if (this.message.t <= 0) this.message = null; }
     this.grind = Math.max(0, this.grind - h);
     this.sinceShift += h;
     const rpm = this.rpm;
@@ -244,14 +238,14 @@ export class Drivetrain {
         this.running = true; this.stalled = false; this.fire = 0; this.idleInt = 0; this.startGrace = 1.2; this.sinceCatch = 0;
       }
       if (this.running && rpm > 600 && this.fire > 0.95) { this.starterTime = 0; this.cranking = false; }
-      if (this.starterTime <= 0 && !this.running) { this.cranking = false; this.say('Engine did not start: select N/P or press the clutch'); }
+      if (this.starterTime <= 0 && !this.running) { this.cranking = false; this.say('engineNoStart'); }
     } else this.cranking = false;
     this.fire = this.running ? Math.min(1, this.fire + h / (E.fireRamp ?? 0.2)) : 0;
     this.sinceCatch += h;
     this.startGrace = Math.max(0, this.startGrace - h);
     if (this.running && rpm < E.stallRpm && !this.cranking && this.startGrace <= 0) {
       this.running = false; this.stalled = true;
-      this.say('Engine stalled: press I to start');
+      this.say('engineStalled');
     }
     if (rpm > E.limiterRpm) this.limiterCut = true;
     else if (rpm < E.limiterRpm - 180) this.limiterCut = false;

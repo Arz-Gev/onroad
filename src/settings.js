@@ -46,12 +46,19 @@ export const DEFAULTS = {
   gBushHeight: 1.6,         // undergrowth size multiplier
   gBushDist: 1.55,          // undergrowth distance multiplier
   vegetation: true,         // grass and undergrowth on / off (not part of the presets)
+  // interface colours (theme.js): a palette, or 'custom' with the three colours below; panel opacity
+  uiPalette: 'onroad',
+  uiAccent: '#ededed',
+  uiCool: '#4cc2ff',
+  uiHot: '#ff5c35',
+  uiGlass: 0.5,
 };
 
 // the time of day used to be one of three presets; saved games still hold those names
 const OLD_TIMES = { day: 13, dusk: 19.5, night: 23 };
 
 const CHOICES = {
+  uiPalette: ['onroad', 'ice', 'neon', 'mint', 'violet', 'mono', 'custom'],
   gearbox: ['auto', 'manual'],
   handbrake: ['hold', 'toggle', 'auto'],
   steerAssist: ['strong', 'light', 'off'],
@@ -72,7 +79,10 @@ const RANGES = {
   gGrass: [0.04, 0.96], gGrassHeight: [1.8, 3.9], gGrassWidth: [0.8, 2.4], gGrassNear: [42, 72], gGrassDist: [119, 287],
   gGrassFarWidth: [1.3, 3.6], gGrassFarSpacing: [0.85, 1.6], gGrassFarGrow: [0, 1.5],
   gBushes: [0.05, 2.2], gBushHeight: [1.1, 2.6], gBushDist: [1, 2.25],
+  uiGlass: [0.2, 0.85],
 };
+const HEX = /^#[0-9a-f]{6}$/i;
+const PATTERNS = { uiAccent: HEX, uiCool: HEX, uiHot: HEX };
 
 export const storage = {
   get(k) { try { return window.localStorage.getItem(k); } catch { return null; } },
@@ -84,6 +94,7 @@ function valid(k, v) {
   if (!(k in DEFAULTS) || typeof v !== typeof DEFAULTS[k]) return false;
   if (CHOICES[k]) return CHOICES[k].includes(v);
   if (RANGES[k]) return Number.isFinite(v) && v >= RANGES[k][0] && v <= RANGES[k][1];
+  if (PATTERNS[k]) return PATTERNS[k].test(v);
   return true;
 }
 

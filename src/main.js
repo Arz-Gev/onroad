@@ -20,8 +20,9 @@ import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
 import { Vehicle } from './vehicle/Vehicle.js';
 import { CameraRig, CAM_MODES, CAM_NAMES } from './cameraRig.js';
-import { Input, capsHTML, setCapabilities, hasControl } from './input.js';
+import { Input, setCapabilities, hasControl } from './input.js';
 import { HUD, fmtPressure, escapeHTML } from './hud.js';
+import { PALETTES, applyTheme } from './theme.js';
 import { Menu } from './menu.js';
 import { Settings } from './settings.js';
 import { GameAudio } from './audio/audio.js';
@@ -258,14 +259,10 @@ async function main() {
 
   // ---------------------------------------------------------------- settings -> game
   // Every persisted setting is applied here, whether it came from a key, the menu or startup.
-  // opts.silent: no toast (startup, and changes made in the menu where the control shows the state).
-  // toasts with the same key replace each other instead of stacking (key null: no grouping)
-  const say = (key, html, kind = '', t) => hud.toast(html, { kind, t, key: key || html });
-  const k = id => capsHTML(id, input.device);
-  const setHeadlights = (h, silent) => {
-    view.lights.head = h;
-    if (!silent) say('head', ['Headlights off', 'Low beam', 'High beam'][h]);
-  };
+  // opts.silent: no notification (startup, and changes made in the menu where the control shows the state).
+  // State the cluster shows (gearbox, lights, sound, TC, ABS...) never notifies: its field flashes (docs/UI.md).
+  const notify = (id, p) => hud.notify(id, p);
+  const setHeadlights = h => { view.lights.head = h; };
   // automatic headlights when it gets dark (env.night has hysteresis, so this fires once per crossing)
   env.onNightChange = night => { if (night && view.lights.head === 0) setHeadlights(1, true); };
   const TIME_NAMES = { day: 'Day', dusk: 'Dusk', night: 'Night' };
@@ -275,24 +272,25 @@ async function main() {
     autoClutch(v, o) { if (d.clutchAssist !== v) { d.toggleClutchAssist(); if (o.silent) d.message = null; } },
     arcadeAuto(v, o) {
       vehicle.arcadeAuto = v; vehicle.revTimer = 0;
-      if (!o.silent) say('arcade', v ? 'Arcade automatic: hold brake at a stop to reverse' : 'Realistic automatic: select R to reverse');
+      hud.configure({ arcade: v });
+      if (!o.silent) notify('setting', { text: v ? 'Arcade automatic: hold the brake to reverse' : 'Realistic automatic: select R to reverse' });
     },
     handbrake(v, o) {
       vehicle.hbMode = v; vehicle.hbLatched = false;
-      if (!o.silent) say('hb', { hold: 'Handbrake: hold the key', toggle: 'Handbrake: press on, press off', auto: 'Handbrake: tap toggles, long press holds' }[v]);
+      if (!o.silent) notify('setting', { text: { hold: 'Handbrake: hold the key', toggle: 'Handbrake: press on, press off', auto: 'Handbrake: tap toggles, long press holds' }[v] });
     },
     steerAssist(v, o) {
       vehicle.steerAssist = v;
-      if (!o.silent) say('steerAssist', { strong: 'Keyboard steering: strong assist', light: 'Keyboard steering: light assist', off: 'Keyboard steering: no assist, full lock at any speed' }[v]);
+      if (!o.silent) notify('setting', { text: { strong: 'Steering assist: strong', light: 'Steering assist: light', off: 'Steering assist off: full lock at any speed' }[v] });
     },
-    camera(v, o) { rig.setMode(v); if (!o.silent) say('camera', CAM_NAMES[v]); },
+    camera(v, o) { rig.setMode(v); if (!o.silent) notify('camera', { name: CAM_NAMES[v] }); },
     // the hour follows at once (menu slider, startup); the N key asks for the 2.5 s sweep
     time(v, o) {
       env.setHour(v, { instant: !o.animate });
       if (o.startup) env.flush();
-      if (!o.silent) say('time', TIME_NAMES[quickTime(v)] || env.hourText);
+      if (!o.silent) notify('time', { name: TIME_NAMES[quickTime(v)] || env.hourText });
     },
-    muted(v, o) { audio.setMuted(v); refreshSound(); if (!o.silent) say('sound', v ? `Sound off · ${k('mute')} turns it on` : 'Sound on'); },
+    muted(v) { audio.setMuted(v); refreshSound(); },
     volume(v) { audio.setVolume(v); },
     quality: () => applyGraphics(),
     ...Object.fromEntries(GFX_KEYS.map(key => [key, (v, o) => {
@@ -301,9 +299,25 @@ async function main() {
     }])),
     renderScale: () => applyGraphics(),
     vegetation: () => applyGraphics(),
+    // interface colours: a palette writes its three colours (sync: they don't flip it to Custom); a colour
+    // picked by hand switches the palette to Custom
+    uiPalette(v) {
+      const P = PALETTES[v];
+      if (P) for (const [key, c] of [['uiAccent', P.accent], ['uiCool', P.cool], ['uiHot', P.hot]]) settings.set(key, c, { silent: true, sync: true });
+      applyUi();
+    },
+    uiAccent: uiColor, uiCool: uiColor, uiHot: uiColor,
+    uiGlass: () => applyUi(),
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
+  function uiColor(v, o) {
+    if (!o.sync && !o.startup && !o.reset && settings.get('uiPalette') !== 'custom') settings.set('uiPalette', 'custom', { silent: true });
+    applyUi();
+  }
+  function applyUi() {
+    applyTheme({ accent: settings.get('uiAccent'), cool: settings.get('uiCool'), hot: settings.get('uiHot'), glass: settings.get('uiGlass') });
+  }
   settings.onChange((key, v, o) => {
     if (APPLY[key]) APPLY[key](v, o, key);
     tuning.dirty = true;
@@ -315,19 +329,17 @@ async function main() {
     const before = vehicle.pressure;
     vehicle.setPressure(before + delta);
     const p = vehicle.pressure, u = settings.get('pressureUnit');
-    if (p === before) { say('pressure', `Tyres at the ${delta < 0 ? 'minimum' : 'maximum'}: ${fmtPressure(p, u)}`, 'warn'); return; }
-    const note = p <= 14 ? ' · aired down: big footprint, more grip off-road' : p >= 32 ? ' · road pressure: firm, less grip on loose ground' : '';
-    say('pressure', `Tyres ${fmtPressure(p, u)}${note}`);
+    if (p === before) notify('tyresLimit', { min: delta < 0, value: fmtPressure(p, u) });
   };
   const recover = () => {
     placeVehicle(vehicle.pos.x, vehicle.pos.z, vehicle.yaw(), 1.0);
-    say('place', 'Recovered', 'good');
+    notify('recovered');
   };
   const teleport = i => {
     const t = teleports[i];
     if (!t) return;
     placeVehicle(t.x, t.z, t.yaw);
-    say('place', escapeHTML(t.title), 'good');
+    notify('place', { name: t.title });
   };
   const nearestLocation = () => {
     let best = -1, bd = 25 * 25;
@@ -346,19 +358,19 @@ async function main() {
     centreLock: () => d.toggleCenterLock(),
     lockers: () => d.cycleAxleLockers(),
     rearDiff: () => d.cycleAxleLockers(),   // on a fixed-RWD car the same key cycles the rear diff type
-    traction: () => { vehicle.tc = !vehicle.tc; say('tc', vehicle.tc ? 'Traction control on' : 'Traction control off'); },
-    abs: () => { vehicle.abs = !vehicle.abs; say('abs', vehicle.abs ? 'ABS on' : 'ABS off: hard braking locks the wheels'); },
+    traction: () => { vehicle.tc = !vehicle.tc; },
+    abs: () => { vehicle.abs = !vehicle.abs; },
     rwd: () => d.toggleRwd(vehicle.speed),
     engineStart: () => d.startEngine(),
     engineStop: () => {
-      if (!d.running && !d.cranking) { say('engine', `Engine is already off · ${k('engineStart')} starts it`); return; }
-      d.stopEngine(); say('engine', 'Engine off');
+      if (!d.running && !d.cranking) { notify('engineAlreadyOff'); return; }
+      d.stopEngine();
     },
     pressureDown: () => changePressure(-2),
     pressureUp: () => changePressure(2),
     headlights: () => setHeadlights((view.lights.head + 1) % 3),
-    lightBar: () => { view.lights.bar = !view.lights.bar; say('bar', view.lights.bar ? 'Light bar on' : 'Light bar off'); },
-    hazards: () => { view.lights.hazard = !view.lights.hazard; say('haz', view.lights.hazard ? 'Hazard lights on' : 'Hazard lights off'); },
+    lightBar: () => { view.lights.bar = !view.lights.bar; },   // only on a car with a light bar (capabilities)
+    hazards: () => { view.lights.hazard = !view.lights.hazard; },
     recover,
     camera: () => settings.set('camera', next(CAM_MODES, rig.mode)),
     time: () => {
@@ -434,7 +446,7 @@ async function main() {
     onPause: setPaused,
   });
   game.menu = menu;
-  Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), toast: (html, kind, key) => say(key, html, kind), redraw: () => { game.redraw = 3; } });
+  Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), notify, redraw: () => { game.redraw = 3; } });
   colliderView.setEnabled(!!tuning.state.ui.overlay);
   game.setPaused = setPaused;
   hud.onMenu = () => menu.open();
@@ -448,10 +460,10 @@ async function main() {
   // ---------------------------------------------------------------- input devices
   input.onDevice = dev => { hud.setDevice(dev); menu.renderDevice(); };
   window.addEventListener('gamepadconnected', e => {
-    say('pad', `Controller connected · ${capsHTML('menu', 'pad')} menu`, 'good', 3.5);
+    notify('padOn');
     console.info('gamepad', e.gamepad.id, e.gamepad.mapping || '(non-standard mapping)');
   });
-  window.addEventListener('gamepaddisconnected', () => { say('pad', 'Controller disconnected', 'warn', 3.5); input.setDevice('kb'); });
+  window.addEventListener('gamepaddisconnected', () => { notify('padOff'); input.setDevice('kb'); });
 
   // ---------------------------------------------------------------- sound (needs a user gesture)
   let audioFailed = false, audioPending = null;
@@ -506,7 +518,7 @@ async function main() {
       if (steps === MAX_STEPS) acc = 0;
       game.stepsPerFrame = steps;
       // fell off the world
-      if (curPos.y < -60) { placeVehicle(spawn.x, spawn.z, spawn.yaw || 0); say('place', 'Fell off the map: back at the spawn', 'warn'); }
+      if (curPos.y < -60) { placeVehicle(spawn.x, spawn.z, spawn.yaw || 0); notify('fellOff'); }
     }
     mark('physics');
     // paused: render only when something changed (setting, resize, time-of-day blend), the menu covers the view
