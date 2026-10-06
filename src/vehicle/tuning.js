@@ -450,7 +450,7 @@ export function geometry(P, pressF, pressR, pts0 = null) {
   const archTop = of(P).C.archTop;
   const arch = P.axles.map(a => {
     const bump = archTop - (a.droopY + a.travel + R);
-    const twist = archTop - (a.droopY + a.travel / 2 * (1 + P.track / a.springTrack) + R);
+    const twist = archTop - (a.droopY + a.travel / 2 * (1 + P.track / (a.springTrack ?? P.track)) + R);
     return { bump, twist };
   });
   return { ride, approach: app, departure: dep, breakover: brk, bodyClear: low, diffClear: diff, arch };
@@ -481,7 +481,7 @@ export function analyze(P, setup, gearbox = 'auto') {
     const ms = P.bodyMass * G * (i === 0 ? out.front : 1 - out.front) / G;
     const f = Math.sqrt(2 * kRide / ms) / (2 * Math.PI);
     const zeta = (a.bump + a.rebound) / (2 * Math.sqrt(2 * a.k * ms)); // two dampers, average of bump/rebound
-    return { f, zeta, kRide, rollStiff: a.k * a.springTrack * a.springTrack / 2 + a.arb };
+    return { f, zeta, kRide, rollStiff: a.k * (a.springTrack ?? P.track) ** 2 / 2 + a.arb };
   });
   // gearing: road speed at the limiter in every gear, high and low range
   const R = P.tire.radius, Re = R - 0.012;
