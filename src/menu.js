@@ -1,4 +1,4 @@
-import { BINDINGS, capsHTML, padCapHTML } from './input.js';
+import { BINDING, activeBindings, capsHTML, padCapHTML } from './input.js';
 import { escapeHTML } from './hud.js';
 import { icon } from './icons.js';
 
@@ -6,7 +6,8 @@ import { icon } from './icons.js';
 // locations, Esc) and gamepad (d-pad / left stick, A, B, LB/RB, Menu) via Input.uiHandler.
 //
 // The menu holds no game state: it reads and writes through `api`
-// ({ get, set, action, locations, teleport, recover, onPause, device, carId }) supplied by main.js.
+// ({ get, set, action, locations, teleport, recover, onPause, device, capabilities }) supplied by main.js.
+// A row with `needs` shows only when the active car's capabilities have it (src/cars/).
 
 const TABS = [
   { id: 'locations', label: 'Locations', hot: 'locations', icon: 'pin' },
@@ -15,7 +16,7 @@ const TABS = [
   { id: 'controls', label: 'Controls', hot: 'controls', icon: 'keyboard' },
 ];
 // plain-text key for a tooltip ("Recover · R")
-const keyText = id => { const b = BINDINGS.find(x => x.id === id); return b ? b.keys.join(' / ') : ''; };
+const keyText = id => { const b = BINDING[id]; return b ? b.keys.join(' / ') : ''; };
 const tip = (label, id) => escapeHTML(id && keyText(id) ? `${label} · ${keyText(id)}` : label);
 
 const fmtClock = min => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
@@ -27,7 +28,7 @@ const SECTIONS = [
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
     row('handbrake', 'Handbrake', 'seg', { options: [['hold', 'Hold'], ['toggle', 'Toggle'], ['auto', 'Auto']], note: 'Hold: while the key is down. Toggle: press on, press off. Auto: a short tap toggles, a long press holds.' }),
     row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the car right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the car can still slide or spin.' }),
-    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
+    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], needs: 'tyrePressure', note: 'Lower: a bigger footprint, more grip on loose ground and a softer ride. Higher: sharper, less grip off-road.' }),
   ] },
   { title: 'View', col: 1, rows: [
     row('camera', 'Camera', 'seg', { hot: 'camera', options: [['chase', 'Chase'], ['cockpit', 'Cockpit'], ['hood', 'Hood'], ['wheel', 'Wheel'], ['orbit', 'Orbit']] }),
@@ -40,7 +41,7 @@ const SECTIONS = [
   ] },
   { title: 'Vehicle', col: 1, rows: [
     row('headlights', 'Headlights', 'seg', { hot: 'headlights', options: [[0, 'Off'], [1, 'Low'], [2, 'High']] }),
-    row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', car: 'defender' }),
+    row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', needs: 'lightBar' }),
     row('hazards', 'Hazard lights', 'switch', { hot: 'hazards' }),
   ] },
   { title: 'Units', col: 2, rows: [
@@ -180,10 +181,10 @@ export class Menu {
       if (r.type === 'buttons') return `<div class="btns">${r.buttons.map(([a, l]) => `<button type="button" class="btn small" data-action="${a}">${l}</button>`).join('')}</div>`;
       return '';
     };
-    const car = this.api.carId;
+    const caps = this.api.capabilities || {};
     // two fixed columns (each section names its own): rows that hide or show never move a section across
     const col = c => sections.filter(s => (s.col || 1) === c).map(s => `
-      <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
+      <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.needs || caps[r.needs]).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
           ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
           <div class="set-c">${ctl(r)}</div>
@@ -192,12 +193,13 @@ export class Menu {
   }
 
   buildControls() {
-    const groups = [...new Set(BINDINGS.map(b => b.group))];
+    const list = activeBindings();
+    const groups = [...new Set(list.map(b => b.group))];
     this.panes.controls.innerHTML = `
       <div class="ctl-cols">${groups.map(g => `
         <div class="ctl-sec">
           <div class="ctl-row head"><h2>${g}</h2><span>Keyboard</span><span class="ctl-p">Gamepad</span></div>
-          <div class="ctl-table">${BINDINGS.filter(b => b.group === g).map(b => `
+          <div class="ctl-table">${list.filter(b => b.group === g).map(b => `
             <div class="ctl-row"><span class="ctl-a">${escapeHTML(b.label)}</span><span class="ctl-k">${capsHTML(b.id, 'kb', { all: true })}</span><span class="ctl-p">${padCapHTML(b.id)}</span></div>`).join('')}
           </div></div>`).join('')}
       </div>`;

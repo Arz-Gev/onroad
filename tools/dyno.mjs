@@ -2,8 +2,9 @@
 // for every engine preset or a list, automatic and manual, next to the panel's quick estimate.
 //   node tools/dyno.mjs [v8,td5,...]     TUNE='{"tyres":{"size":35}}' merges sections over each setup
 import RAPIER from '@dimforge/rapier3d-compat';
-import { makeDefenderParams } from '../src/vehicle/params.js';
-import { STOCK, applySetup, estimateAccel, clone, ENGINE_ORDER } from '../src/vehicle/tuning.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
+import { carTuning, applySetup, estimateAccel, clone } from '../src/vehicle/tuning.js';
+const { STOCK, ENGINE_ORDER } = carTuning('defender');
 import { accelRun } from '../src/vehicle/dyno.js';
 await RAPIER.init();
 const engines = process.argv[2] ? process.argv[2].split(',') : ENGINE_ORDER;

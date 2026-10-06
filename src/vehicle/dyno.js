@@ -3,6 +3,7 @@
 // falls back to running it in slices on the main thread if workers are unavailable.
 import { Vehicle } from './Vehicle.js';
 import { SURFACES } from './tire.js';
+import { rideRaise } from './tuning.js';
 
 const H = 1 / 240;
 
@@ -14,7 +15,7 @@ export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], s
   const n = 8, m = 280, heights = new Float32Array((n + 1) * (m + 1));
   world.createCollider(RAPIER.ColliderDesc.heightfield(n, m, heights, { x: 160, y: 1, z: 1400 }).setFriction(0.8));
   world.step();
-  const v = new Vehicle(RAPIER, world, P, { position: { x: 0, y: 0.15 + (P.tire.radius - 0.42), z: 650 }, surfaceAt: () => SURFACES[surface] || SURFACES.dirt });
+  const v = new Vehicle(RAPIER, world, P, { position: { x: 0, y: 0.15 + rideRaise(P), z: 650 }, surfaceAt: () => SURFACES[surface] || SURFACES.dirt });
   v.pressures = [...pressures];
   const d = v.drivetrain;
   if (gearbox === 'manual') d.toggleMode();

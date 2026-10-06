@@ -91,5 +91,6 @@ export async function loadCarModel(url, opts = {}) {
   return {
     root, body, wheels, lamps, lights, info,
     driverEye: new THREE.Vector3(...(opts.driverEye || [0.36, 1.0, 0.25])),
+    hoodEye: new THREE.Vector3(...(opts.hoodEye || [0, 1.08, -0.5])),   // hood camera: just above the windscreen base
   };
 }

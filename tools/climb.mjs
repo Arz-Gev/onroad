@@ -3,7 +3,7 @@
 // For each slope and diff setting: metres climbed in 12 s at full throttle (auto box).
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { SURFACES } from '../src/vehicle/tire.js';
 await RAPIER.init();
 const H = 1 / 240;

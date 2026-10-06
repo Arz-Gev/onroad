@@ -4,9 +4,10 @@
 //   node tools/ramptest.mjs [old|new|both] [deg,deg,...]     TUNE='{"tyres":{"size":35}}' for a setup
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { SURFACES } from '../src/vehicle/tire.js';
-import { STOCK, sanitize, applySetup, geometry } from '../src/vehicle/tuning.js';
+import { carTuning, applySetup, geometry } from '../src/vehicle/tuning.js';
+const { STOCK, sanitize } = carTuning('defender');
 import { touchPoints } from '../src/vehicle/colliderView.js';
 await RAPIER.init();
 

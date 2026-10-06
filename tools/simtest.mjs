@@ -1,9 +1,10 @@
 // Headless physics checks for the vehicle model.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { RPM } from '../src/vehicle/drivetrain.js';
-import { sanitize, applySetup } from '../src/vehicle/tuning.js';
+import { carTuning, applySetup } from '../src/vehicle/tuning.js';
+const { sanitize } = carTuning('defender');
 await RAPIER.init();
 
 const H = 1 / 240;

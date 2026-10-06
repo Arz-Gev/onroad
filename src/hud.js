@@ -2,6 +2,9 @@ import { capsHTML } from './input.js';
 
 // In-game HUD: instrument cluster (bottom right), toasts and context tips (top centre),
 // key hints + menu button (top left), optional suspension panel, telemetry and fps.
+// What the cluster shows follows the car's capabilities (src/cars/): range HI/LO only with a transfer case,
+// the three-diff diagram on a 4x4 and the rear diff alone on a RWD car, 2WD and light-bar lamps only when
+// the car has them; the gear strip and the rpm dial follow the gearbox and the engine.
 //
 // Cost rules: no layout reads per frame; DOM text/classes are written only when the value changes;
 // bars move with transforms; the rpm dial redraws only when the rpm moves by >= 20 rpm, on top of a
@@ -12,10 +15,12 @@ export const fmtPressure = (psi, unit) => unit === 'bar' ? `${(psi * 0.0689476).
 export const speedUnit = u => SPEED_UNITS[u] || SPEED_UNITS.kmh;
 
 const AUTO_STRIP = ['P', 'R', 'N', 'D'];
-const MAN_STRIP = ['R', 'N', '1', '2', '3', '4', '5'];
+const manStrip = n => ['R', 'N', ...Array.from({ length: n }, (_, i) => String(i + 1))];
 const DIAL = 156;          // css px at scale 1
 const SUSP = 216;
-const MAX_RPM = 6000;
+// the rpm dial reads to the next 1000 above the rev limiter (6000 for the Defender's V8, 9000 for the SR20)
+const dialMax = E => Math.max(6000, Math.ceil(E.limiterRpm / 1000) * 1000);
+const REAR_DIFF = { welded: 'Welded', lsd: 'LSD', open: 'Open' };
 const A0 = Math.PI * 0.75, A1 = Math.PI * 2.25;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
@@ -23,8 +28,10 @@ const ICON_SOUND = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l
 const ICON_MUTED = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor"/><path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
 
 export class HUD {
-  constructor(root = document.getElementById('hud')) {
+  // caps: the active car's capabilities (src/cars/)
+  constructor(root = document.getElementById('hud'), caps = {}) {
     this.root = root;
+    this.caps = caps;
     root.innerHTML = `
       <div class="hud-tl">
         <div class="tl-row">
@@ -108,6 +115,13 @@ export class HUD {
       psi: $('h-psi'), surf: $('h-surf'),
       tEng: $('t-eng'), tHb: $('t-hb'), tAbs: $('t-abs'), tTc: $('t-tc'), tRwd: $('t-rwd'), tHead: $('t-head'), tBar: $('t-bar'), tHaz: $('t-haz'),
     };
+    // parts of the cluster the car doesn't have
+    const fourByFour = caps.drive === '4x4';
+    this.e.range.parentElement.hidden = !caps.transfer;
+    this.e.diffs[0].style.display = this.e.diffs[1].style.display = fourByFour ? '' : 'none';
+    root.querySelector('#h-diffs .shaft').setAttribute('d', fourByFour ? 'M14 13H50M14 59H50M32 13V59' : 'M14 13H50M14 59H50M32 24V59');
+    if (!caps.selectableRwd) this.e.tRwd.remove();
+    if (!caps.lightBar) this.e.tBar.remove();
     this.dctx = this.e.dial.getContext('2d');
     this.sctx = $('h-suspcv').getContext('2d');
     this.c = {};                       // last written values
@@ -252,8 +266,8 @@ export class HUD {
     if (modeKey !== c.mode) {
       c.mode = modeKey; c.stripIdx = undefined;
       e.mode.textContent = manual ? 'MANUAL' : 'AUTO';
-      e.modeSub.textContent = manual ? (d.clutchAssist ? 'auto-clutch' : 'clutch pedal') : '6-speed';
-      e.strip.innerHTML = (manual ? MAN_STRIP : AUTO_STRIP).map(g => `<i>${g}</i>`).join('');
+      e.modeSub.textContent = manual ? (d.clutchAssist ? 'auto-clutch' : 'clutch pedal') : `${v.P.auto.ratios.length}-speed`;
+      e.strip.innerHTML = (manual ? manStrip(v.P.manual.ratios.length) : AUTO_STRIP).map(g => `<i>${g}</i>`).join('');
       e.cluWrap.classList.toggle('off', !(manual && !d.clutchAssist));
     }
     const stripIdx = manual ? d.manualGear + 1 : AUTO_STRIP.indexOf(d.selector);
@@ -269,10 +283,16 @@ export class HUD {
 
     // transfer case + diffs
     if (d.range !== c.range) { c.range = d.range; e.range.dataset.v = d.range; }
-    // a car without a transfer case (fixed RWD) has no range to show
-    if (d.fixedRwd !== c.fixedRwd) { c.fixedRwd = d.fixedRwd; e.range.parentElement.hidden = !!d.fixedRwd; }
     const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0);
-    if (locks !== c.locks) {
+    if (this.caps.drive !== '4x4') {
+      // RWD: the rear diff alone, by type (the diff key / tuning panel change it)
+      if (d.rearDiff !== c.rearDiff) {
+        c.rearDiff = d.rearDiff;
+        e.diffs[2].classList.toggle('locked', d.rearDiff === 'welded');
+        e.diffTxt.textContent = REAR_DIFF[d.rearDiff] || 'Open';
+        e.diffTxt.classList.toggle('locked', d.rearDiff === 'welded');
+      }
+    } else if (locks !== c.locks) {
       c.locks = locks;
       e.diffs[0].classList.toggle('locked', d.frontLock);
       e.diffs[1].classList.toggle('locked', d.centerLock);
@@ -311,7 +331,7 @@ export class HUD {
     this.lamp(e.tHb, 'hb', v.ctl.handbrake > 0.5);
     const abs = !v.abs ? 'ABS OFF' : v.absActive > 0 ? 'ABS' : '';
     if (abs !== c.abs) { c.abs = abs; e.tAbs.hidden = !abs; if (abs) e.tAbs.textContent = abs; }
-    this.lamp(e.tRwd, 'rwd', d.rwd && !d.fixedRwd);
+    if (this.caps.selectableRwd) this.lamp(e.tRwd, 'rwd', d.rwd);
     const tc = !v.tc ? 'TC OFF' : v.tcActive > 0 ? 'TC' : '';
     if (tc !== c.tc) { c.tc = tc; e.tTc.hidden = !tc; if (tc) e.tTc.textContent = tc; }
     const head = view.lights.head;
@@ -320,7 +340,7 @@ export class HUD {
       e.tHead.textContent = head === 2 ? 'HIGH BEAM' : 'LOW BEAM';
       e.tHead.className = 'tt ' + (head === 2 ? 'blue' : 'green');
     }
-    this.lamp(e.tBar, 'bar', view.lights.bar);
+    if (this.caps.lightBar) this.lamp(e.tBar, 'bar', view.lights.bar);
     this.lamp(e.tHaz, 'haz', view.lights.hazard);
 
     // context tips (4 Hz)
@@ -341,7 +361,7 @@ export class HUD {
     el.style.transform = `scaleY(${q / 100})`;
   }
   rpmBar(rpm, E) {
-    const q = Math.round(clamp(rpm / MAX_RPM, 0, 1) * 100);
+    const q = Math.round(clamp(rpm / dialMax(E), 0, 1) * 100);
     if (q !== this.c.rpmQ) { this.c.rpmQ = q; this.e.rpmBar.style.transform = `scaleX(${q / 100})`; }
     const zone = rpm >= E.redlineRpm ? 'red' : rpm >= E.redlineRpm - 700 ? 'amber' : '';
     if (zone !== this.c.rpmZone) { this.c.rpmZone = zone; this.e.rpmBar.className = zone; }
@@ -364,10 +384,11 @@ export class HUD {
     else if (engine > 0.6) { key = 'engine'; html = `Engine ${d.stalled ? 'stalled' : 'off'}. Press ${k('engineStart')} to start it.`; }
     else if (neutral > 1.2) { key = 'neutral'; html = d.mode === 'manual' ? `Gearbox in neutral. Press ${k('shiftUp')} for 1st, ${k('shiftDown')} for reverse.` : `Selector in ${d.selector}. Press ${k('shiftUp')} for Drive${d.selector === 'P' ? ` (reverse: ${k('shiftUp')} once)` : ''}.`; }
     else if (stuck > 3) {
-      const s = [];
-      if (d.range === 'high') s.push(`${k('range')} low range`);
-      if (!d.centerLock) s.push(`${k('centreLock')} centre lock`);
-      if (!(d.rearLock && d.frontLock)) s.push(`${k('lockers')} lockers`);
+      // suggest only what the car has
+      const s = [], cap = this.caps;
+      if (cap.transfer && d.range === 'high') s.push(`${k('range')} low range`);
+      if (cap.centreDiff && !d.centerLock) s.push(`${k('centreLock')} centre lock`);
+      if (cap.lockers === 'axles' && !(d.rearLock && d.frontLock)) s.push(`${k('lockers')} lockers`);
       key = 'stuck:' + s.length;
       html = `Stuck? ${s.length ? 'Try ' + s.join(', ') + ', or' : 'Pick another line, or'} ${k('recover')} to recover.`;
     }
@@ -379,6 +400,9 @@ export class HUD {
   // ------------------------------------------------------------------ rpm dial
   drawDial(rpm, E) {
     const q = Math.round(rpm / 20);
+    const MAX_RPM = dialMax(E);
+    // a new engine (tuning panel) can move the scale or the red line: redraw the static layer
+    if (MAX_RPM !== this.dialMax || E.redlineRpm !== this.dialRed) { this.dialMax = MAX_RPM; this.dialRed = E.redlineRpm; this.dialStatic = null; this.c.rpmQ = undefined; }
     if (q === this.c.rpmQ) return;
     this.c.rpmQ = q;
     const g = this.dctx, px = this.e.dial.width, k = px / DIAL;
@@ -511,9 +535,10 @@ const DT_MESSAGES = [
   [/^Stop to change transfer range/, () => 'Stop the car to change the transfer range', 'warn', 'range'],
   [/^Auto clutch OFF/, k => `Auto-clutch off · hold ${k('clutch')} for the clutch`, '', 'gearbox'],
   [/^Auto clutch ON/, () => 'Auto-clutch on', 'good', 'gearbox'],
-  [/^Manual 5-speed \(clutch pedal/, k => `Manual 5-speed · clutch pedal on ${k('clutch')}`, '', 'gearbox'],
-  [/^Manual 5-speed/, () => 'Manual 5-speed · auto-clutch', '', 'gearbox'],
-  [/^Automatic/, () => 'Automatic 6-speed', '', 'gearbox'],
+  [/^Manual (\d+)-speed \(clutch pedal/, (k, m) => `Manual ${m[1]}-speed · clutch pedal on ${k('clutch')}`, '', 'gearbox'],
+  [/^Manual (\d+)-speed/, (k, m) => `Manual ${m[1]}-speed · auto-clutch`, '', 'gearbox'],
+  [/^Automatic \((\d+)-speed/, (k, m) => `Automatic ${m[1]}-speed`, '', 'gearbox'],
+  [/^Rear diff: (.*)/, (k, m) => `Rear diff: ${m[1]}`, '', 'lockers'],
   [/^LOW range engaged/, () => 'Low range engaged', 'good', 'range'],
   [/^HIGH range engaged/, () => 'High range engaged', '', 'range'],
   [/^Centre diff LOCKED/, () => 'Centre diff locked', 'good', 'centre'],

@@ -4,7 +4,7 @@
 // front / rear axle slip angles. Rear slip > front slip = oversteer; slip angle growing after the lift = spin.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { SURFACES } from '../src/vehicle/tire.js';
 await RAPIER.init();
 const H = 1 / 240;

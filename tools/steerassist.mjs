@@ -4,7 +4,7 @@
 // front / rear slip angles, and spins / rollovers (4 s held, then 3 s released). FULL=1 floors the gas meanwhile.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { SURFACES } from '../src/vehicle/tire.js';
 await RAPIER.init();
 const H = 1 / 240;

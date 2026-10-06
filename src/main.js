@@ -14,17 +14,13 @@ import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
 import { buildTrack } from './world/track.js';
-import { makeDefenderParams } from './vehicle/params.js';
+import { carFromURL } from './cars/index.js';
 import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
 import { Vehicle } from './vehicle/Vehicle.js';
-import { buildTruck } from './vehicle/truckModel.js';
-import { VehicleView } from './vehicle/vehicleView.js';
-import { loadCarModel } from './vehicle/carModel.js';
-import { CarView } from './vehicle/carView.js';
 import { CameraRig, CAM_MODES, CAM_NAMES } from './cameraRig.js';
-import { Input, capsHTML } from './input.js';
+import { Input, capsHTML, setCapabilities, hasControl } from './input.js';
 import { HUD, fmtPressure, escapeHTML } from './hud.js';
 import { Menu } from './menu.js';
 import { Settings } from './settings.js';
@@ -137,29 +133,29 @@ async function main() {
   }
 
   setLoading('Building the car…', 0.68); await frame();
-  // ?car=defender brings back the truck. The player's tuning setup (saved per car) goes into the params
-  // before the car is built.
-  const carId = params.get('car') === 'defender' ? 'defender' : 's15';
+  // ?car=<id> picks the car (src/cars/index.js). Everything car-specific comes from the car module; the
+  // rest of the game only reads its capabilities. The player's tuning setup (saved per car) goes into the
+  // params before the car is built.
+  const car = carFromURL();
+  const caps = car.capabilities;
+  setCapabilities(caps);   // the controls the car has: key dispatch, controls list, hints
   const tuningApi = {};
-  const tuning = new TuningPanel(tuningApi, carId);
+  const tuning = new TuningPanel(tuningApi, car);
   const P = tuning.T.applySetup(tuning.T.make(), tuning.setup);
   const surfaceAt = (col, p) => (col && colliderSurface.get(col.handle)) || terrain.surfaceAt(p.x, p.z);
   const spawnY = terrain.heightAt(spawn.x, spawn.z) + 0.12 + rideRaise(P);
   const vehicle = new Vehicle(RAPIER, world, P, { position: { x: spawn.x, y: spawnY, z: spawn.z }, yaw: spawn.yaw, surfaceAt });
   vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
   world.step();
-  const model = carId === 'defender'
-    ? buildTruck(makeDefenderParams())   // modelled stock; the view scales the wheels and follows the lift
-    : await loadCarModel(`${import.meta.env.BASE_URL}models/s15.glb`);
+  const { model, view } = await car.build(vehicle);
   scene.add(model.root);
-  const view = carId === 'defender' ? new VehicleView(model, vehicle) : new CarView(model, vehicle);
-  const colliderView = new ColliderView(scene, model, vehicle);
+  const colliderView = new ColliderView(scene, model, vehicle, car.body);
   const d = vehicle.drivetrain;
 
 
   const rig = new CameraRig(camera, terrain);
   const input = new Input(canvas);
-  const hud = new HUD();
+  const hud = new HUD(undefined, caps);
   const audio = new GameAudio();
   const settings = new Settings();
   const dust = new Dust(scene);
@@ -211,7 +207,7 @@ async function main() {
     game.redraw = 3;
   };
 
-  const game = { scenery, grass, trees, water, undergrowth, props, terrainView, pipeline, bloom: pipeline.params, tracks, dust, RAPIER, world, terrain, vehicle, model, view, rig, env, input, hud, audio, settings, renderer, scene, camera, placeVehicle, teleports, tuning, colliderView, paused: false, redraw: 0, stepsPerFrame: 0, autopilot: null, loadLog };
+  const game = { car, scenery, grass, trees, water, undergrowth, props, terrainView, pipeline, bloom: pipeline.params, tracks, dust, RAPIER, world, terrain, vehicle, model, view, rig, env, input, hud, audio, settings, renderer, scene, camera, placeVehicle, teleports, tuning, colliderView, paused: false, redraw: 0, stepsPerFrame: 0, autopilot: null, loadLog };
   window.game = game;
 
   // ---------------------------------------------------------------- graphics quality
@@ -349,6 +345,7 @@ async function main() {
     range: () => d.toggleRange(vehicle.speed),
     centreLock: () => d.toggleCenterLock(),
     lockers: () => d.cycleAxleLockers(),
+    rearDiff: () => d.cycleAxleLockers(),   // on a fixed-RWD car the same key cycles the rear diff type
     traction: () => { vehicle.tc = !vehicle.tc; say('tc', vehicle.tc ? 'Traction control on' : 'Traction control off'); },
     abs: () => { vehicle.abs = !vehicle.abs; say('abs', vehicle.abs ? 'ABS on' : 'ABS off: hard braking locks the wheels'); },
     rwd: () => d.toggleRwd(vehicle.speed),
@@ -378,7 +375,8 @@ async function main() {
     telemetry: () => toggle('telemetry'),
     tuning: () => tuning.toggle(),
   };
-  input.onAction = id => { if (ACTIONS[id]) ACTIONS[id](); };
+  // only the controls the car has (input.js setCapabilities) run, from keys, pad, menu or console
+  input.onAction = id => { if (ACTIONS[id] && hasControl(id)) ACTIONS[id](); };
   game.action = id => input.onAction(id);
 
   // ---------------------------------------------------------------- pause menu + welcome card
@@ -392,7 +390,7 @@ async function main() {
     game.redraw = 3;
   }
   const menu = new Menu({
-    carId,
+    capabilities: caps,
     locations: teleports,
     device: () => input.device,
     get(key) {

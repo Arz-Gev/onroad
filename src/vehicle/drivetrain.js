@@ -40,7 +40,7 @@ export class Drivetrain {
     this.P = P;
     this.mode = 'auto';             // 'auto' | 'manual'
     this.clutchAssist = true;       // manual: automatic clutch
-    this.manualGear = 0;            // -1 R, 0 N, 1..5
+    this.manualGear = 0;            // -1 R, 0 N, 1..number of gears
     this.selector = 'D';            // auto selector
     this.autoGear = 1;
     this.range = 'high';
@@ -108,7 +108,8 @@ export class Drivetrain {
   // ratio from gearbox input to the wheels (signed), 0 = neutral
   ratioFor(mode, gear) {
     const P = this.P;
-    const tr = (this.range === 'low' ? P.transfer.low : P.transfer.high) * P.finalDrive;
+    // a car without a transfer case (P.transfer missing) drives 1:1 behind the gearbox
+    const tr = (P.transfer ? (this.range === 'low' ? P.transfer.low : P.transfer.high) : 1) * P.finalDrive;
     if (mode === 'manual') {
       if (gear === 0) return 0;
       if (gear < 0) return -P.manual.reverse * tr;
@@ -143,7 +144,8 @@ export class Drivetrain {
     this.manualGear = 0; this.selector = 'N'; this.autoGear = 1; this.shift = null; this.lockup = 0;
     this.updateInertia();
     this.w[1] = this.w[0];
-    this.say(this.mode === 'auto' ? 'Automatic (6-speed, torque converter)' : 'Manual 5-speed' + (this.clutchAssist ? ' (auto clutch)' : ' (clutch pedal: Shift)'));
+    const P = this.P;
+    this.say(this.mode === 'auto' ? `Automatic (${P.auto.ratios.length}-speed, torque converter)` : `Manual ${P.manual.ratios.length}-speed` + (this.clutchAssist ? ' (auto clutch)' : ' (clutch pedal: Shift)'));
   }
   toggleClutchAssist() {
     this.clutchAssist = !this.clutchAssist;
@@ -205,9 +207,9 @@ export class Drivetrain {
       this.setSelector(AUTO_SELECTOR[i]);
       return;
     }
-    const target = clamp(this.manualGear + dir, -1, 5);
+    const target = clamp(this.manualGear + dir, -1, this.P.manual.ratios.length);
     if (target === this.manualGear) return;
-    if (target === -1 && this.wheelMean() * 0.42 > 1.5) { this.say('Too fast for reverse'); this.grind = 0.35; return; }
+    if (target === -1 && this.wheelMean() * this.P.tire.radius > 1.5) { this.say('Too fast for reverse'); this.grind = 0.35; return; }
     if (this.clutchAssist) {
       this.shift = { phase: 'out', t: 0, target };
       return;

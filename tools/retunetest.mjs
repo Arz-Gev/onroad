@@ -4,8 +4,9 @@
 //   node tools/retunetest.mjs
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
-import { STOCK, clone, applySetup } from '../src/vehicle/tuning.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
+import { carTuning, clone, applySetup } from '../src/vehicle/tuning.js';
+const { STOCK } = carTuning('defender');
 await RAPIER.init();
 const H = 1 / 240;
 const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
