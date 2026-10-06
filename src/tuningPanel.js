@@ -248,8 +248,12 @@ export class TuningPanel {
   }
 
   renderSetups() {
-    const names = Object.keys(this.state.setups);
-    this.sel.innerHTML = `<option value="">${this.matchName() ? escapeHTML(this.matchName()) : 'Current setup'}</option>` + names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
+    // Stock is always listed; a setup that matches no entry shows as an unpickable "Custom" line
+    const names = Object.keys(this.state.setups), cur = this.matchName();
+    const opt = (n, attr = '') => `<option value="${escapeHTML(n)}"${attr}${n === cur ? ' selected' : ''}>${escapeHTML(n)}</option>`;
+    this.sel.innerHTML = (cur ? '' : `<option value="" selected disabled>Custom (unsaved)</option>`)
+      + `<option value="Stock" data-stock="1"${cur === 'Stock' ? ' selected' : ''}>Stock</option>`
+      + names.map(n => opt(n)).join('');
   }
   matchName() {
     const cur = JSON.stringify(this.setup);
@@ -288,10 +292,12 @@ export class TuningPanel {
   onChange(e) {
     const t = e.target;
     if (t === this.sel && t.value) {
-      this.state.setup = this.T.sanitize(this.state.setups[t.value]);
+      const stock = !!t.selectedOptions[0]?.dataset.stock;
+      this.state.setup = stock ? clone(this.T.STOCK) : this.T.sanitize(this.state.setups[t.value]);
+      if (stock) this.state.ui.sel = -1;
       this.apply();
       this.save();
-      this.api.toast(`Setup loaded: ${escapeHTML(t.value)}`, 'good', 'tune');
+      this.api.toast(stock ? `Stock ${this.T.ui.noun}` : `Setup loaded: ${escapeHTML(t.value)}`, 'good', 'tune');
       t.blur();
       this.rebuild();
     }
