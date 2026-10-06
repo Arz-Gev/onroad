@@ -93,7 +93,7 @@ export class TuningPanel {
       <div class="tn-io" hidden></div>
       <div class="tn-sum"></div>
       <div class="tn-scroll"></div>`;
-    el.classList.toggle('hints', !!this.state.ui.hints);
+    el.classList.toggle('tn-help', !!this.state.ui.hints);
     this.scroll = el.querySelector('.tn-scroll');
     this.sum = el.querySelector('.tn-sum');
     this.io = el.querySelector('.tn-io');
@@ -304,7 +304,7 @@ export class TuningPanel {
     if (!t || !this.el.contains(t)) return;
     const d = t.dataset, s = this.setup;
     if (d.act === 'close') return this.toggle(false);
-    if (d.act === 'hints') { this.state.ui.hints = !this.state.ui.hints; this.el.classList.toggle('hints', this.state.ui.hints); this.save(); return; }
+    if (d.act === 'hints') { this.state.ui.hints = !this.state.ui.hints; this.el.classList.toggle('tn-help', this.state.ui.hints); this.save(); return; }
     if (d.act === 'toggle') {
       const sec = t.closest('[data-sec]'), id = sec.dataset.sec;
       this.state.ui.sections[id] = !this.state.ui.sections[id];
