@@ -37,7 +37,7 @@ Things that are not obvious from reading the code: conventions, measured baselin
 
 ## UI (HUD, menu, input)
 
-**The rules are in `docs/UI.md`** (look, two accents, no layout shift, state vs event, notifications, class naming). Follow them for anything on screen.
+**The rules are in `docs/UI.md`** (look, three colour roles, no layout shift, state vs event, notifications, class naming). Follow them for anything on screen.
 
 - **Files**: `input.js` (keyboard + gamepad, `BINDINGS`), `hud.js` (in-game HUD: cluster + ticker), `messages.js` (every ticker text, by id), `menu.js` (Esc menu), `icons.js` (line icons for the menus), `settings.js` (saved settings), `ui.css` (all UI styles), `main.js` (wires them together). `index.html` only holds the loading screen and its inline styles.
 - **`BINDINGS` in `input.js` is the single source of truth** for every control: the key/pad dispatch, the HUD hints, the ticker's key caps and the menu's Controls page are all generated from it. To add a control, add a binding with an `id`, then a handler in `ACTIONS` in `main.js`.

@@ -1,6 +1,7 @@
 import { BINDINGS, capsHTML, padCapHTML } from './input.js';
 import { escapeHTML } from './hud.js';
 import { icon } from './icons.js';
+import { PALETTES, PALETTE_ORDER } from './theme.js';
 
 // Pause menu (Locations / Settings / Graphics / Controls). It pauses the game. Navigation: mouse, keyboard (arrows, Enter, Q/E for tabs, digits for
 // locations, Esc) and gamepad (d-pad / left stick, A, B, LB/RB, Menu) via Input.uiHandler.
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'locations', label: 'Locations', hot: 'locations', icon: 'pin' },
   { id: 'settings', label: 'Settings', icon: 'sliders' },
   { id: 'graphics', label: 'Graphics', icon: 'monitor' },
+  { id: 'interface', label: 'Interface', icon: 'palette' },
   { id: 'controls', label: 'Controls', hot: 'controls', icon: 'keyboard' },
 ];
 // plain-text key for a tooltip ("Recover · R")
@@ -29,12 +31,12 @@ const SECTIONS = [
     row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the car right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the car can still slide or spin.' }),
     row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
   ] },
-  { title: 'View', col: 1, rows: [
+  { title: 'View', col: 2, rows: [
     row('camera', 'Camera', 'seg', { hot: 'camera', options: [['chase', 'Chase'], ['cockpit', 'Cockpit'], ['hood', 'Hood'], ['wheel', 'Wheel'], ['orbit', 'Orbit']] }),
     row('time', 'Time of day', 'range', { hot: 'time', min: 0, max: 1435, step: 5, scale: 60, fmt: fmtClock, note: 'The picture follows the slider at once. Day 13:00, dusk 19:30, night 23:00.' }),
     row('timeQuick', '', 'seg', { quick: true, options: [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']] }),
   ] },
-  { title: 'Sound', col: 1, rows: [
+  { title: 'Sound', col: 2, rows: [
     row('sound', 'Sound', 'switch', { hot: 'mute' }),
     row('volume', 'Volume', 'range', { min: 0, max: 100, step: 5, scale: 100, unit: '%' }),
   ] },
@@ -42,6 +44,21 @@ const SECTIONS = [
     row('headlights', 'Headlights', 'seg', { hot: 'headlights', options: [[0, 'Off'], [1, 'Low'], [2, 'High']] }),
     row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', car: 'defender' }),
     row('hazards', 'Hazard lights', 'switch', { hot: 'hazards' }),
+  ] },
+  { title: 'Game', col: 2, rows: [
+    row('autoPause', 'Pause when the window loses focus', 'switch'),
+    row('_game', '', 'buttons', { buttons: [['resetSettings', 'Reset settings']] }),
+  ] },
+];
+
+// Interface tab: colours (theme.js) and the HUD. Picking a colour by hand switches the palette to Custom.
+const UI_SECTIONS = [
+  { title: 'Colours', col: 1, rows: [
+    row('uiPalette', 'Palette', 'palette'),
+    row('uiAccent', 'Main', 'color', { note: 'Text highlights, selected buttons, the rpm bar.' }),
+    row('uiCool', 'Active and changed', 'color', { note: 'TC or ABS working, handbrake on, locked diffs, wheel slip, settings changed from stock.' }),
+    row('uiHot', 'Warnings', 'color', { note: 'Refused actions, engine off, the redline.' }),
+    row('uiGlass', 'Panel opacity', 'range', { min: 20, max: 85, step: 5, scale: 100, unit: '%', note: 'How dark the HUD and menu backgrounds are.' }),
   ] },
   { title: 'Units', col: 2, rows: [
     row('speedUnit', 'Speed', 'seg', { options: [['kmh', 'km/h'], ['mph', 'mph']] }),
@@ -54,10 +71,6 @@ const SECTIONS = [
     row('suspension', 'Suspension panel', 'switch', { hot: 'suspension' }),
     row('telemetry', 'Telemetry', 'switch', { hot: 'telemetry' }),
     row('fps', 'FPS counter', 'switch'),
-  ] },
-  { title: 'Game', col: 2, rows: [
-    row('autoPause', 'Pause when the window loses focus', 'switch'),
-    row('_game', '', 'buttons', { buttons: [['resetSettings', 'Reset settings']] }),
   ] },
 ];
 
@@ -126,6 +139,7 @@ export class Menu {
         <section class="pane" role="tabpanel" id="pane-locations" data-pane="locations"></section>
         <section class="pane" role="tabpanel" id="pane-settings" data-pane="settings" hidden></section>
         <section class="pane" role="tabpanel" id="pane-graphics" data-pane="graphics" hidden></section>
+        <section class="pane" role="tabpanel" id="pane-interface" data-pane="interface" hidden></section>
         <section class="pane" role="tabpanel" id="pane-controls" data-pane="controls" hidden></section>
         <footer class="sheet-foot" id="m-foot"></footer>
       </div>`;
@@ -134,6 +148,7 @@ export class Menu {
     this.buildLocations();
     this.buildSettings(this.panes.settings, SECTIONS);
     this.buildSettings(this.panes.graphics, GFX_SECTIONS);
+    this.buildSettings(this.panes.interface, UI_SECTIONS);
     this.buildControls();
     this.renderDevice();
 
@@ -150,6 +165,7 @@ export class Menu {
     });
     r.addEventListener('input', e => {
       const el = e.target;
+      if (el.type === 'color') { this.setValue(el.closest('[data-key]').dataset.key, el.value.toLowerCase()); return; }
       if (el.type !== 'range') return;
       const def = this.rowDef(el.closest('[data-key]').dataset.key);
       this.setValue(def.key, +el.value / def.scale);
@@ -169,11 +185,13 @@ export class Menu {
       </div>`;
   }
 
-  rowDef(key) { for (const s of [...SECTIONS, ...GFX_SECTIONS]) for (const r of s.rows) if (r.key === key) return r; return null; }
+  rowDef(key) { for (const s of [...SECTIONS, ...GFX_SECTIONS, ...UI_SECTIONS]) for (const r of s.rows) if (r.key === key) return r; return null; }
 
   buildSettings(pane, sections) {
     const ctl = r => {
       if (r.type === 'seg') return `<div class="seg" role="radiogroup" aria-label="${escapeHTML(r.label)}">${r.options.map(([v, l]) => `<button type="button" role="radio" data-seg="${v}">${l}</button>`).join('')}</div>`;
+      if (r.type === 'palette') return `<div class="set-pal" role="radiogroup" aria-label="Palette">${[...PALETTE_ORDER, 'custom'].map(id => { const P = PALETTES[id]; return `<button type="button" role="radio" data-seg="${id}" title="${P ? P.name : 'Custom'}"><span class="set-sw">${P ? [P.accent, P.cool, P.hot].map(c => `<i style="background:${c}"></i>`).join('') : '<i class="set-sw-c"></i><i class="set-sw-c"></i><i class="set-sw-c"></i>'}</span><span>${P ? P.name : 'Custom'}</span></button>`; }).join('')}</div>`;
+      if (r.type === 'color') return `<label class="set-color"><input type="color" aria-label="${escapeHTML(r.label)}"><output></output></label>`;
       if (r.type === 'switch') return `<button type="button" class="switch" role="switch" aria-label="${escapeHTML(r.label)}"><span class="knob"></span></button>`;
       if (r.type === 'range') return `<div class="range"><input type="range" min="${r.min}" max="${r.max}" step="${r.step}" aria-label="${escapeHTML(r.label)}"><output></output></div>`;
       if (r.type === 'stepper') return `<div class="stepper"><button type="button" data-action="pressureDown" aria-label="Lower">−</button><output></output><button type="button" data-action="pressureUp" aria-label="Raise">+</button></div>`;
@@ -215,9 +233,9 @@ export class Menu {
     const k = (l, cls = '') => `<kbd class="cap${cls}">${l}</kbd>`;
     const n = this.api.locations.length;
     const items = dev === 'pad'
-      ? [[k('D-pad', ' pad'), 'Move'], (tab === 'settings' || tab === 'graphics') && [k('←', ' pad') + k('→', ' pad'), 'Change'], [k('A', ' pad pad-a'), tab === 'locations' ? 'Teleport' : 'Select'],
+      ? [[k('D-pad', ' pad'), 'Move'], ['settings', 'graphics', 'interface'].includes(tab) && [k('←', ' pad') + k('→', ' pad'), 'Change'], [k('A', ' pad pad-a'), tab === 'locations' ? 'Teleport' : 'Select'],
         [k('LB', ' pad') + k('RB', ' pad'), 'Tabs'], [k('B', ' pad pad-b'), 'Resume']]
-      : [[k('↑') + k('↓'), tab === 'controls' ? 'Scroll' : 'Move'], (tab === 'settings' || tab === 'graphics') && [k('←') + k('→'), 'Change'],
+      : [[k('↑') + k('↓'), tab === 'controls' ? 'Scroll' : 'Move'], ['settings', 'graphics', 'interface'].includes(tab) && [k('←') + k('→'), 'Change'],
         tab !== 'controls' && [k('Enter'), tab === 'locations' ? 'Teleport' : 'Select'], tab === 'locations' && [k('1') + '–' + k(String(Math.min(9, n))), 'Quick pick'],
         [k('Q') + k('E'), 'Tabs'], [k('Esc'), 'Resume']];
     this.root.querySelector('#m-foot').innerHTML = items.filter(Boolean).map(([c, t]) => `<span>${c} ${t}</span>`).join('');
@@ -228,9 +246,13 @@ export class Menu {
     const api = this.api;
     const here = api.get('here');
     this.panes.locations.querySelectorAll('.loc-here').forEach((el, i) => { el.hidden = i !== here; });
-    for (const rowEl of [...this.panes.settings.querySelectorAll('.set-row'), ...this.panes.graphics.querySelectorAll('.set-row')]) {
+    for (const rowEl of [...this.panes.settings.querySelectorAll('.set-row'), ...this.panes.graphics.querySelectorAll('.set-row'), ...this.panes.interface.querySelectorAll('.set-row')]) {
       const key = rowEl.dataset.key, def = this.rowDef(key);
-      if (def.type === 'seg') {
+      if (def.type === 'color') {
+        const v = api.get(key), inp = rowEl.querySelector('input');
+        if (inp.value.toLowerCase() !== v) inp.value = v;
+        rowEl.querySelector('output').textContent = v;
+      } else if (def.type === 'seg' || def.type === 'palette') {
         const cur = String(api.get(key));
         const bs = [...rowEl.querySelectorAll('[data-seg]')], any = bs.some(b => b.dataset.seg === cur);
         for (const b of bs) {

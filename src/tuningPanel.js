@@ -2,6 +2,7 @@ import { carTuning, clone, analyze, exportJSON, netTorque } from './vehicle/tuni
 import { storage } from './settings.js';
 import { escapeHTML, fmtPressure } from './hud.js';
 import { icon } from './icons.js';
+import { theme, rgba } from './theme.js';
 import './tuning.css';
 
 // In-game tuning panel (Tab). The game keeps running: the mouse works the panel, the driving keys
@@ -497,6 +498,7 @@ export class TuningPanel {
       ['Weight / power', `${f1(A.engine.kgPerHp)} kg/hp`],
     ]));
     this.drawCurve();
+    if (this._themeV !== theme.v) { this._themeV = theme.v; if (this.runs.length) this.drawDyno(); }
     ss('trans', `${gearbox === 'manual' ? 'Manual' : 'Automatic'} · ${f2(s.gearbox.final)}`);
     ro('trans', kv([
       ['Top speed', `${f0(A.vmax)} km/h${vs(A.vmax, S.vmax, 0)}`],
@@ -601,10 +603,10 @@ export class TuningPanel {
     g.strokeStyle = 'rgba(255,255,255,0.08)'; g.lineWidth = 1; g.font = '500 18px "Geist Mono", ui-monospace, Menlo, monospace'; g.fillStyle = 'rgba(237,237,237,0.4)';
     for (let r = 1000; r < maxR; r += 1000) { g.beginPath(); g.moveTo(X(r), 10); g.lineTo(X(r), H - 24); g.stroke(); g.fillText(r / 1000 + 'k', X(r) - 10, H - 4); }
     const line = (pts, Y, col, dash) => { g.setLineDash(dash || []); g.strokeStyle = col; g.lineWidth = dash ? 2 : 3.5; g.beginPath(); pts.forEach(([r, n], i) => (i ? g.lineTo(X(r), Y(n)) : g.moveTo(X(r), Y(n)))); g.stroke(); g.setLineDash([]); };
-    line(s0.t, Yt, 'rgba(237,237,237,0.35)', [8, 6]); line(s0.w, Yw, 'rgba(255,92,53,0.45)', [8, 6]);
-    line(c.t, Yt, '#ededed'); line(c.w, Yw, '#ff5c35');
-    g.fillStyle = '#ededed'; g.fillText(`${Math.round(maxT / 1.1)} Nm`, 4, 22);
-    g.fillStyle = '#ff5c35'; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
+    line(s0.t, Yt, rgba(theme.accent, 0.35), [8, 6]); line(s0.w, Yw, rgba(theme.cool, 0.45), [8, 6]);
+    line(c.t, Yt, theme.accent); line(c.w, Yw, theme.cool);
+    g.fillStyle = theme.accent; g.fillText(`${Math.round(maxT / 1.1)} Nm`, 4, 22);
+    g.fillStyle = theme.cool; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
   }
 
   // ------------------------------------------------------------------ 0-100 measurement
@@ -648,7 +650,7 @@ export class TuningPanel {
     for (const k of [50, 100]) { g.beginPath(); g.moveTo(pad, Y(k)); g.lineTo(W - 10, Y(k)); g.stroke(); g.fillText(String(k), 2, Y(k) + 6); }
     const step = maxT > 30 ? 10 : 5;
     for (let t = step; t < maxT; t += step) { g.fillText(t + 's', X(t) - 12, H - 4); }
-    const cols = ['#ededed', '#ff5c35', 'rgba(237,237,237,0.6)', 'rgba(255,92,53,0.6)', 'rgba(237,237,237,0.35)', 'rgba(255,92,53,0.35)'];
+    const cols = [theme.accent, theme.cool, rgba(theme.accent, 0.6), rgba(theme.cool, 0.6), rgba(theme.accent, 0.35), rgba(theme.cool, 0.35)];
     this.runs.slice().reverse().forEach((r, k, arr) => {
       const i = arr.length - 1 - k;
       g.strokeStyle = cols[i]; g.lineWidth = i === 0 ? 4 : 2; g.globalAlpha = i === 0 ? 1 : 0.7;

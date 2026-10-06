@@ -1,5 +1,6 @@
 import { capsHTML } from './input.js';
 import { MESSAGES } from './messages.js';
+import { theme, rgba } from './theme.js';
 
 // In-game HUD. The rules it follows are in docs/UI.md; read them before adding anything here.
 //
@@ -8,8 +9,9 @@ import { MESSAGES } from './messages.js';
 // - The cluster shows STATE: speed, gear, rpm, a car glyph (wheel slip, diff locks, pedals), a row of
 //   indicator lamps (engine, handbrake, TC, ABS, lights, hazards, light bar, sound) and an info row
 //   (gearbox, driveline, tyres, surface). A field the player changed flashes once.
-// - The ticker shows EVENTS (hud.notify(id), texts in messages.js) and standing tips: one line, empty
-//   by default; a new line slides in from below, the old one slides up and fades.
+// - The ticker shows EVENTS (hud.notify(id), texts in messages.js) and standing tips: a short stack
+//   over the cluster, empty by default; a new line slides in at the bottom and pushes the others up,
+//   expired lines fade out upwards.
 //
 // Cost rules: no layout reads per frame; DOM text/classes are written only when the value changes;
 // bars move with transforms.
@@ -19,9 +21,9 @@ export const fmtPressure = (psi, unit) => unit === 'bar' ? `${(psi * 0.0689476).
 export const speedUnit = u => SPEED_UNITS[u] || SPEED_UNITS.kmh;
 
 const SUSP = 216;
-const HOT = '#ff5c35';         // = --hot in ui.css (canvas drawing)
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const LIFE = { info: 2.6, warn: 3.6 };
+const LIFE = { info: 2.8, warn: 3.8 };
+const MAX_LINES = 3;
 
 // indicator lamps: 24 px grid, stroke = currentColor
 const svg = (p, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${p}</svg>`;
@@ -67,8 +69,7 @@ export class HUD {
             <div class="gear" id="h-gear">N</div>
             <div class="spd-box"><span class="spd" id="h-spd">0</span><span class="unit" id="h-unit">km/h</span></div>
             <svg class="car" id="h-car" viewBox="0 0 34 48" aria-hidden="true">
-              <rect class="body" x="7" y="2" width="20" height="44" rx="6"/>
-              <path class="axle" d="M7 11H27M7 37H27"/>
+              <path class="axle" d="M7 11H27M7 37H27M17 11V37"/>
               <rect class="w" x="2" y="5" width="5" height="12" rx="1.5"/><rect class="w" x="27" y="5" width="5" height="12" rx="1.5"/>
               <rect class="w" x="2" y="31" width="5" height="12" rx="1.5"/><rect class="w" x="27" y="31" width="5" height="12" rx="1.5"/>
               <circle class="df" cx="17" cy="11" r="2.6"/><circle class="df" cx="17" cy="24" r="2.6"/><circle class="df" cx="17" cy="37" r="2.6"/>
@@ -98,9 +99,8 @@ export class HUD {
     this.c = {};                       // last written values
     this.opts = { speedUnit: 'kmh', pressureUnit: 'psi', cluster: 'auto', hudScale: 1, hints: true, suspension: false, telemetry: false, fps: false, arcade: false };
     this.device = 'kb';
-    this.event = null;                 // the current ticker event { key, html, level, t }
-    this.hint = null;                  // the current standing tip { key, html, level }
-    this.shown = null;                 // what the ticker shows now { key, html, el }
+    this.lines = [];                   // ticker lines, oldest first: { key, params, html, level, t, el }
+    this.hintKey = null;               // the standing tip's id, if one is up
     this.tipState = { rolled: 0, stuck: 0, neutral: 0, engine: 0, clear: 0, acc: 0, id: null };
     this.fpsAcc = 0; this.fpsN = 0; this.suspAcc = 1; this.teleAcc = 1;
     this.soundState = 'locked';
@@ -152,8 +152,7 @@ export class HUD {
       : `<span>${k('controls')} Controls</span><span>${k('locations')} Locations</span><span>${k('camera')} Camera</span><span>${k('tuning')} Tuning</span><span>${k('recover')} Recover</span>`;
     this.e.suspKey.innerHTML = capsHTML('suspension', 'kb');
     // key caps in the ticker follow the device
-    if (this.event) this.event.html = this.render(this.event.key, this.event.params);
-    if (this.hint) this.hint.html = this.render(this.hint.key, this.hint.params);
+    for (const x of this.lines) this.setLine(x, this.render(x.key, x.params));
   }
 
   // sound: 'locked' (waiting for a gesture), 'on', 'muted', 'error'
@@ -172,46 +171,60 @@ export class HUD {
     for (const [key, v] of Object.entries(p)) ep[key] = typeof v === 'string' ? escapeHTML(v) : v;
     return m.text(ep, k => capsHTML(k, this.device));
   }
-  // an event (messages.js id): replaces whatever event is showing
+  // The ticker is a short stack over the cluster, newest at the bottom. A new line slides in from below
+  // and pushes the others up; a line that times out (or the oldest past MAX_LINES) fades out upwards.
+  // An id that is already up updates in place (with a nudge) instead of stacking.
   notify(id, params) {
     const m = MESSAGES[id];
     const level = m?.level === 'warn' ? 'warn' : 'info';
-    this.event = { key: id, params, html: this.render(id, params), level, t: LIFE[level], n: (this.event?.n || 0) + 1 };
+    this.pushLine(id, params, level, LIFE[level]);
   }
-  // a standing tip (or null): shown while no event is
+  // a standing tip (or null): a line with no timeout, until its condition clears
   setHint(id, params) {
-    if (!id) { this.hint = null; return; }
-    const html = this.render(id, params);
-    if (this.hint?.key === id && this.hint.html === html) return;
-    this.hint = { key: id, params, html, level: 'hint' };
+    if (this.hintKey && this.hintKey !== id) { const x = this.lines.find(l => l.key === this.hintKey); if (x) this.dropLine(x); }
+    this.hintKey = id || null;
+    if (id) this.pushLine(id, params, 'hint', Infinity, false);
   }
-  tickTicker(dt) {
-    if (this.event && (this.event.t -= dt) <= 0) this.event = null;
-    const want = this.event || this.hint;
-    const cur = this.shown;
-    if (cur && want && cur.key === want.key) {
-      // the same line again (a repeat, or new text for it): update in place with a short pulse
-      if (cur.html !== want.html || cur.n !== want.n) {
-        cur.html = want.html; cur.n = want.n;
-        cur.el.querySelector('.tk-t').innerHTML = want.html;
-        cur.el.animate?.([{ transform: 'translateX(calc(-3 * var(--u)))' }, { transform: 'none' }], { duration: 220, easing: 'ease-out' });
-      }
+  pushLine(key, params, level, t, nudge = true) {
+    const html = this.render(key, params);
+    const same = this.lines.find(x => x.key === key && !x.leaving);
+    if (same) {
+      same.t = t; same.params = params;
+      const changed = this.setLine(same, html);
+      // the text nudges, not the line: the line's transform holds its place in the stack
+      if (nudge || changed) same.el.firstChild.animate?.([{ transform: 'translateX(calc(-4 * var(--u)))' }, { transform: 'none' }], { duration: 240, easing: 'ease-out' });
       return;
     }
-    if (!cur && !want) return;
-    if (cur) {
-      const el = cur.el;
-      el.classList.add('out');
-      setTimeout(() => el.remove(), 320);
-    }
-    this.shown = null;
-    if (want) {
-      const el = document.createElement('div');
-      el.className = 'tk tk-' + want.level;
-      el.innerHTML = `<i class="tk-d"></i><span class="tk-t">${want.html}</span>`;
-      this.e.ticker.append(el);
-      this.shown = { key: want.key, html: want.html, n: want.n, el };
-    }
+    const el = document.createElement('div');
+    el.className = `tk tk-${level} tk-new`;
+    el.innerHTML = `<span class="tk-t">${html}</span>`;
+    this.e.ticker.append(el);
+    this.lines.push({ key, params, html, level, t, el });
+    const live = this.lines.filter(x => !x.leaving);
+    if (live.length > MAX_LINES) this.dropLine(live.find(x => x.level !== 'hint') || live[0]);
+    this.layoutLines();
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('tk-new')));
+  }
+  setLine(x, html) {
+    if (x.html === html) return false;
+    x.html = html;
+    x.el.firstChild.innerHTML = html;
+    return true;
+  }
+  dropLine(x) {
+    if (x.leaving) return;
+    x.leaving = true;
+    x.el.classList.add('tk-out');
+    setTimeout(() => { x.el.remove(); this.lines = this.lines.filter(y => y !== x); }, 340);
+    this.layoutLines();
+  }
+  // stack positions: the newest line sits on the cluster, each older one a step higher and dimmer
+  layoutLines() {
+    const live = this.lines.filter(x => !x.leaving);
+    live.forEach((x, i) => { const k = live.length - 1 - i; x.el.style.setProperty('--k', k); x.el.dataset.k = k; });
+  }
+  tickTicker(dt) {
+    for (const x of this.lines) if (!x.leaving && (x.t -= dt) <= 0) this.dropLine(x);
   }
 
   // ------------------------------------------------------------------ per frame
@@ -277,20 +290,22 @@ export class HUD {
 
     // lamps
     const L = e.lamp;
+    // working (TC / ABS intervening, handbrake on) is 'act': the lamp lights in the cool colour, no flash.
+    // A flash only marks the player switching something (the last argument: the switch's value).
     this.lampState(L.eng, 'eng', d.running ? 'off' : d.cranking ? 'blink' : 'warn');
-    this.lampState(L.hb, 'hb', v.ctl.handbrake > 0.5 ? 'warn' : 'off');
-    this.lampState(L.tc, 'tc', !v.tc ? 'off' : v.tcActive > 0 ? 'warn' : 'on', true);
-    this.lampState(L.abs, 'abs', !v.abs ? 'off' : v.absActive > 0 ? 'warn' : 'on', true);
+    this.lampState(L.hb, 'hb', v.ctl.handbrake > 0.5 ? 'act' : 'off');
+    this.lampState(L.tc, 'tc', !v.tc ? 'off' : v.tcActive > 0 ? 'act' : 'on', v.tc);
+    this.lampState(L.abs, 'abs', !v.abs ? 'off' : v.absActive > 0 ? 'act' : 'on', v.abs);
     const head = view.lights.head;
     if (head !== c.headIcon) { const first = c.headIcon === undefined; c.headIcon = head; L.light.innerHTML = LAMP_ICONS[head === 2 ? 'high' : 'low']; if (!first) this.flash(L.light); }
     this.lampState(L.light, 'light', head ? 'on' : 'off');
-    this.lampState(L.haz, 'haz', view.lights.hazard ? 'blink' : 'off', true);
+    this.lampState(L.haz, 'haz', view.lights.hazard ? 'blink' : 'off', view.lights.hazard);
     const hasBar = !!view.features?.lightBar;
     if (hasBar !== c.hasBar) { c.hasBar = hasBar; L.bar.hidden = !hasBar; }
-    this.lampState(L.bar, 'bar', view.lights.bar ? 'on' : 'off', true);
+    this.lampState(L.bar, 'bar', view.lights.bar ? 'on' : 'off', view.lights.bar);
     const snd = this.soundState;
     if (snd !== c.sndIcon) { const first = c.sndIcon === undefined; c.sndIcon = snd; L.snd.innerHTML = LAMP_ICONS[snd === 'on' ? 'snd' : 'mute']; if (!first) this.flash(L.snd); }
-    this.lampState(L.snd, 'snd', snd === 'on' ? 'off' : snd === 'muted' ? 'on' : snd === 'locked' ? 'blink' : 'warn');
+    this.lampState(L.snd, 'snd', snd === 'on' ? 'off' : snd === 'muted' ? 'on' : snd === 'locked' ? 'pulse' : 'warn');
 
     // info row (fields the player changes flash)
     this.field(e.box, 'box', manual ? (d.clutchAssist ? 'Manual' : 'Manual · pedal') : (o.arcade ? 'Auto · arcade' : 'Auto'));
@@ -319,14 +334,18 @@ export class HUD {
     this.c[k] = q;
     el.style.transform = `scaleY(${q / 100})`;
   }
-  // a lamp: 'off' (dim) | 'on' (white) | 'warn' (hot) | 'blink' (hot, blinking). flash: the player toggles it
-  lampState(el, k, s, flash = false) {
-    const key = 'L' + k;
+  // a lamp: 'off' (dim) | 'on' (main colour) | 'act' (cool: working) | 'warn' (hot) | 'blink' (hot,
+  // blinking) | 'pulse' (cool, blinking). sw: the player-controlled switch behind it; it flashes only when
+  // that changes, never when the system merely starts or stops working.
+  lampState(el, k, s, sw) {
+    const key = 'L' + k, swKey = 'S' + k;
+    if (sw !== undefined && sw !== this.c[swKey]) {
+      if (this.c[swKey] !== undefined) this.flash(el);
+      this.c[swKey] = sw;
+    }
     if (s === this.c[key]) return;
-    const first = this.c[key] === undefined;
     this.c[key] = s;
     el.dataset.s = s;
-    if (flash && !first) this.flash(el);
   }
   // an info field: text, and a flash when it changes after the first frame
   field(el, k, text) {
@@ -364,7 +383,7 @@ export class HUD {
   // ------------------------------------------------------------------ suspension panel
   drawSuspension(v) {
     // quantised to what the panel can show (kg, mm, % travel, slip colour, steer, 0.1 deg twist)
-    const q = this.suspKey || (this.suspKey = new Int32Array(26)), prev = this.suspPrev || (this.suspPrev = new Int32Array(26).fill(-1));
+    const q = this.suspKey || (this.suspKey = new Int32Array(27)), prev = this.suspPrev || (this.suspPrev = new Int32Array(27).fill(-1));
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i], ax = w.axle;
       const comp = v.wheelComp(w);
@@ -377,6 +396,7 @@ export class HUD {
       q[i * 6 + 5] = Math.round(Math.min(1, (w.FnAvg || 0) / 12000) * 20);
     }
     q[24] = Math.round(v.axleRoll(0) * 573); q[25] = Math.round(v.axleRoll(1) * 573);
+    q[26] = theme.v;
     if (q.every((x, i) => x === prev[i])) return;
     prev.set(q);
     const g = this.sctx, px = g.canvas.width, k = px / 240;
@@ -396,7 +416,7 @@ export class HUD {
       const [x, y] = pos[i];
       const slip = Math.min(1, w.slipNorm || 0);
       const load = Math.min(1, (w.FnAvg || 0) / 12000);
-      const col = !w.contact ? 'rgba(140,140,140,0.4)' : slip > 0.95 ? HOT : slip > 0.7 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
+      const col = !w.contact ? 'rgba(140,140,140,0.4)' : slip > 0.95 ? theme.cool : slip > 0.7 ? theme.accent : rgba(theme.accent, 0.45);
       g.save();
       g.translate(x, y);
       g.rotate(w.steer);
@@ -410,7 +430,7 @@ export class HUD {
       const bx = x + (w.side < 0 ? -28 : 21);
       g.fillStyle = 'rgba(255,255,255,0.14)';
       g.fillRect(bx, y - 22, 7, 44);
-      g.fillStyle = f > 0.9 || f < 0.05 ? HOT : 'rgba(255,255,255,0.7)';
+      g.fillStyle = f > 0.9 || f < 0.05 ? theme.hot : rgba(theme.accent, 0.7);
       g.fillRect(bx, y + 22 - 44 * f, 7, 44 * f);
       const ty = i < 2 ? y - 46 : y + 36;
       g.fillStyle = 'rgba(255,255,255,0.92)';

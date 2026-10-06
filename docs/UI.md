@@ -10,12 +10,17 @@ It does not bring its own look, its own toast or its own colour.
   `var(--glass-blur)`, a 1px `var(--line)` border, and radius 8–12 (HUD lengths in `calc(N * var(--u))`).
   No drop shadows on HUD elements. No gradients.
 - **Colour**: white text in three steps: `--txt`, `--dim`, `--faint` (plus `--ghost` for tracks and
-  outlines). **Two accents, never more**:
-  - `--accent` (white): on, selected, primary button, rpm fill.
-  - `--hot` (orange-red): warning, active intervention (ABS / TC working, handbrake, wheel slip),
-    redline, a value changed from stock.
-  No green for "good", no blue, no amber. "Good" is plain white. If something needs attention, it is hot.
-  Every colour is a token in `:root` (`src/ui.css`). Canvas code uses the same values (`HOT` in hud.js).
+  outlines). **Three colour roles, never more**. The player picks them in Menu → Interface (a palette, or
+  custom colours); `src/theme.js` writes them as CSS variables:
+  - `--accent` (main, white by default): on, selected, primary button, the rpm fill.
+  - `--cool` (active and changed, sky blue by default): a system working (TC / ABS intervening,
+    handbrake on), locked diffs, wheel slip, a value changed from stock, the keyboard focus ring.
+    It means "look, this is doing something". It never means a problem.
+  - `--hot` (warning, orange-red by default): only things that are wrong or need the player now: a
+    refused action, engine off or stalled, the redline, a part that rubs.
+  Never use red or hot for something that is fine (a changed setting, TC working, a slide). No other
+  colours (no green, no amber). Canvas drawing reads the same colours from `theme` (theme.js) and
+  redraws when `theme.v` changes.
 - **Type**: Geist (sans) and Geist Mono (numbers that change: rpm scale, readouts). Weights 400–600.
   Sentence case. Uppercase only for TC / ABS lamp labels. Numbers that update use tabular figures.
 - **Icons**: line icons, 24px grid, `stroke="currentColor"`, 1.75–1.8 stroke. Menus use `src/icons.js`;
@@ -42,6 +47,9 @@ Decide this first for every new piece of information.
   diff / lockers / range, tyre pressure, surface, engine running, sound). It lives in the **cluster**,
   as a lamp (`lampState`) or an info field (`field`). When the player changes it, the field flashes once
   (`flash`). **State is never a notification.** "Low beam" or "ABS off" as a toast is a bug.
+  Flash only when the *player* switches something (`lampState(..., switchValue)`). A system that
+  starts or stops working (TC cutting in, ABS pulsing) only changes the lamp's colour: no flash, no
+  background, no motion.
 - **Event**: something that happened once and is not visible otherwise: a refused action ("Stop to
   change the transfer range"), an error, a result ("0–100 km/h in 4.3 s"), a place you teleported to.
   It goes to the **ticker**.
@@ -53,17 +61,20 @@ A feature the car doesn't have shows no lamp, row, key hint or menu entry (`view
 
 ## 4. Notifications (the ticker)
 
-- One line above the cluster, the cluster's width. It's empty by default. A new line slides in from
-  below, and the old one slides up and fades. One line at a time: the newest event wins, and a standing
-  tip shows when no event is.
-- Levels: `info` (white dot), `warn` (hot dot and border), `hint` (hollow dot, dimmer). No other levels.
+- A short stack of soft lines above the cluster, as wide as the cluster. It's empty by default and
+  draws nothing then. The newest line sits on the cluster. A new line slides in from below and pushes
+  the others up, and each older line is dimmer. Expired lines fade out upwards. At most 3 lines: the
+  oldest event goes first, a standing tip stays while its condition holds.
+- A line has no border and no marker dot: a dark glass band with feathered edges (CSS mask), text
+  centred. Levels: `info` (plain), `warn` (the band tinted with `--hot`), `hint` (lighter band, dimmer
+  text). No other levels.
 - **All text lives in `src/messages.js`**, keyed by id. Code calls `hud.notify(id, params)` (or
   `drivetrain.say(id, params)` from the physics, which the HUD picks up). No HTML or text for the
   player is built anywhere else. Params are escaped. Key caps come from `k(bindingId)`, so they follow
   the device.
 - Text: one line, at most about 48 characters plus key caps, sentence case, no full stop, `·` between
   the fact and the action ("Stalled · I to restart").
-- The same id again updates the line in place with a short nudge. It does not stack.
+- The same id again updates its line in place with a short nudge of the text. It does not stack.
 
 ## 5. Naming
 
@@ -78,6 +89,6 @@ exactly that.
 2. State: add a lamp or an info cell to the cluster in hud.js, with a fixed slot and a flash on change.
    Make sure it still fits the compact cluster.
 3. Event: add an id to `messages.js` and call `hud.notify(id)`.
-4. Use colours and sizes from tokens only. Two accents.
+4. Use colours and sizes from tokens only: the three roles, picked by meaning (section 1).
 5. Hide it on cars that don't have the feature.
 6. Run the checks in DEVNOTES ("UI checks") and look at a screenshot at 1280×800 and at a small window.
