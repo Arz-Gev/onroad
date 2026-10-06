@@ -104,13 +104,26 @@ const covEig = pts => {
 const nearestHub = c => Object.entries(named).reduce((best, [k, h]) => {
   const d = Math.hypot(c[0] - h.x, c[1] - h.y, c[2] - h.z); return d < best.d ? { k, d } : best;
 }, { k: null, d: Infinity });
+// A tyre can be asymmetric (sidewall detail on one side) and tilt that fit by a few degrees, which makes
+// the wheel wobble as it spins: `cfg.axle` names a flat part (brake disc face) to take the axle from.
+const axleRef = {};
+if (cfg.axle) {
+  const pts = {};
+  for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitives() || []) {
+    if (matName(p) !== cfg.axle) continue;
+    const { k } = nearestHub(primBounds(p).c);
+    (pts[k] ||= []).push(...p.getAttribute('POSITION').getArray());
+  }
+  for (const [k, a] of Object.entries(pts)) axleRef[k] = covEig(a).axle;
+}
 const pose = {};    // wheel key -> quaternion that puts the straight wheel back in its posed camber / toe
 const size = {};    // wheel key -> { r, w } of the straight tyre
 const local = {};   // wheel key -> matrix from car frame to the straight wheel frame (origin at the hub)
 for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitives() || []) {
   if (matName(p) !== cfg.tyre) continue;
   const { k } = nearestHub(primBounds(p).c);
-  const { mean, axle } = covEig(p.getAttribute('POSITION').getArray());
+  const fit = covEig(p.getAttribute('POSITION').getArray());
+  const mean = fit.mean, axle = axleRef[k] || fit.axle;
   if (axle.x < 0) axle.negate();
   const L = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(axle, new THREE.Vector3(1, 0, 0)))
     .multiply(new THREE.Matrix4().makeTranslation(-mean.x, -mean.y, -mean.z));

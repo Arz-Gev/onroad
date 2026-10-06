@@ -5,6 +5,7 @@
   "wheelbase": 2.525,
   "forward": { "axis": 2, "sign": 1 },
   "tyre": "generic_tyre1",
+  "axle": "rotor_face2",
   "spin": ["generic_tyre1", "generic_tread1", "wheel_1", "ln_1", "ln_2", "logo_1", "logo_2", "center_1", "center_2", "rotor_face2", "rotor_face2_1", "rotor_face2_2"],
   "caliper": ["calip", "caliper_5"],
   "maxTexture": 2048
