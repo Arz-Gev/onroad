@@ -4,8 +4,13 @@ import { SURFACES, tireCoefs, tireForces, tireRelax } from './tire.js';
 
 // Physics model
 // - Chassis: one Rapier rigid body (sprung + unsprung mass, gravity on the unsprung part cancelled).
-// - Each beam axle: 2 DOF (heave c, roll phi) relative to the chassis, with its own mass and roll inertia,
-//   integrated in substeps with absolute velocities, so wheels hop, axles articulate and axle wrap exists.
+// - Suspension (P.suspension):
+//   'solid' (default): each beam axle has 2 DOF (heave c, roll phi) relative to the chassis, with its own
+//   mass and roll inertia, integrated in substeps with absolute velocities, so wheels hop, axles articulate
+//   and axle wrap exists.
+//   'independent': each wheel has 1 DOF (travel c at the wheel) with its own unsprung mass. Side forces
+//   reach the body along the line from the contact patch to the roll centre (rcY), drive and brake forces
+//   at the road with anti-dive / anti-squat (anti), an anti-roll bar couples the two sides of an axle.
 // - Tyres: fan of rays in the wheel plane (3 rows across the tread) gives contact point, normal and
 //   radial deflection; the tyre is a radial spring/damper in series with the coil spring.
 // - Friction: transient tyre model (tire.js) driven by the drivetrain's wheel speeds (drivetrain.js).
@@ -35,6 +40,7 @@ export class Vehicle {
     this.world = world;
     this.P = P;
     this.surfaceAt = opts.surfaceAt || (() => SURFACES.dirt);
+    this.indep = P.suspension === 'independent';
     this.substeps = opts.substeps || 4;
     this.pressures = [P.tire.pressure, P.tire.pressure];   // front, rear (psi)
     // geometry the physics uses right now; retune() eases it towards P (tyre radius, axle droop height)
@@ -84,6 +90,9 @@ export class Vehicle {
         latOff: 0, surf: SURFACES.dirt, fc: new V3(), sc: new V3(), vcx: 0, vcy: 0, vHubPerp: new V3(),
         ux: 0, uy: 0, Fx: 0, Fy: 0, Fn: 0, Re: P.tire.radius, slipNorm: 0, slipSteady: 0,
         co: {}, accF: new V3(), FnAvg: 0, slipVel: 0, collider: null,
+        // independent corner: travel at the wheel, absolute hub velocity along body up, body-relative rate
+        // of the mount, spring + damper + bar force, per-step force sums for the body
+        c: ax.c, vz: 0, vMountU: 0, S: 0, accU: 0, accLat: 0, accJL: 0, accLong: 0, accJF: 0,
       });
     }
 
@@ -352,9 +361,30 @@ export class Vehicle {
     return s > 0 ? [o2 * s, i2 * s] : [i2 * s, o2 * s];
   }
 
+  // hub centre in the body frame, the suspension's roll of the wheel about body +z, and spring travel
+  hubLocal(w, out) {
+    const ax = w.axle;
+    if (this.indep) return out.set(w.side * this.P.track / 2, ax.droopY + w.c, ax.p.z);
+    out.set(w.side * this.P.track / 2, 0, 0).applyAxisAngle(Z, ax.phi);
+    out.y += ax.droopY + ax.c; out.z += ax.p.z;
+    return out;
+  }
+  wheelRoll(w) { return this.indep ? 0 : w.axle.phi; }
+  wheelComp(w) {
+    const ax = w.axle;
+    return this.indep ? w.c : ax.c + w.side * (ax.p.springTrack / 2) * Math.sin(ax.phi);
+  }
+  wheelCompRate(w) { return this.indep ? w.vz - w.vMountU : w.axle.vz - w.axle.vMountU; }
+  // roll of an axle's suspension against the body (rad, > 0 = right side compressed more)
+  axleRoll(i) {
+    if (!this.indep) return this.axles[i].phi;
+    return (this.wheels[i * 2 + 1].c - this.wheels[i * 2].c) / this.P.track;
+  }
+
   updateGeometry() {
     const P = this.P;
     const [sl, sr] = this.steerAngles();
+    if (this.indep) { this.updateGeometryIndep(sl, sr); return; }
     for (const ax of this.axles) {
       const p = ax.p;
       ax.A.set(0, ax.droopY + ax.c, p.z).applyQuaternion(this.quat).add(this.pos);
@@ -380,6 +410,25 @@ export class Vehicle {
         _v.y += ax.droopY + ax.c; _v.z += ap.z;
         w.sideCollider.setTranslationWrtParent({ x: _v.x, y: _v.y, z: _v.z });
         _q2.multiply(_q.setFromAxisAngle(Y, -w.steer)).multiply(_q.setFromAxisAngle(Z, -Math.PI / 2));
+        w.sideCollider.setRotationWrtParent({ x: _q2.x, y: _q2.y, z: _q2.z, w: _q2.w });
+      }
+    }
+  }
+
+  updateGeometryIndep(sl, sr) {
+    for (const w of this.wheels) {
+      const ax = w.axle;
+      w.steer = ax.p.steered ? (w.side < 0 ? sl : sr) : 0;
+      this.hubLocal(w, _v);
+      w.hub.copy(_v).applyQuaternion(this.quat).add(this.pos);
+      _q.setFromAxisAngle(Y, -w.steer);
+      w.q.copy(this.quat).multiply(_q);
+      w.spinAxis.copy(X).applyQuaternion(w.q);
+      w.up.copy(Y).applyQuaternion(w.q);
+      w.fwd.copy(Z).applyQuaternion(w.q).negate();
+      if (w.sideCollider) {
+        w.sideCollider.setTranslationWrtParent({ x: _v.x, y: _v.y, z: _v.z });
+        _q2.copy(_q).multiply(_q.setFromAxisAngle(Z, -Math.PI / 2));
         w.sideCollider.setRotationWrtParent({ x: _q2.x, y: _q2.y, z: _q2.z, w: _q2.w });
       }
     }
@@ -454,6 +503,11 @@ export class Vehicle {
       ax.vMountU = _v.dot(up);
       ax.rollRateBody = this.angVel.dot(this.back);
       ax.accS[0] = ax.accS[1] = 0; ax.accD[0] = ax.accD[1] = 0; ax.accArb = 0;
+    }
+    if (this.indep) for (const w of this.wheels) {
+      this.hubLocal(w, _v2).applyQuaternion(this.quat).add(this.pos);
+      w.vMountU = this.pointVel(_v2, _v).dot(up);
+      w.accU = w.accLat = w.accJL = w.accLong = w.accJF = 0;
     }
     this.updateGeometry();
 
@@ -553,8 +607,9 @@ export class Vehicle {
           w.ux *= d; w.uy *= d; w.slipVel = 0;
         }
       }
-      // e. axle dynamics
-      for (const ax of this.axles) this.axleSubstep(ax, hs, gU, ax.i === 0 ? dt.propTorque[0] : dt.propTorque[1]);
+      // e. axle / corner dynamics
+      if (this.indep) for (const ax of this.axles) this.cornerSubstep(ax, hs, gU);
+      else for (const ax of this.axles) this.axleSubstep(ax, hs, gU, ax.i === 0 ? dt.propTorque[0] : dt.propTorque[1]);
       // f. tyre deflection follows the hub
       for (const w of this.wheels) {
         this.hubPenDot(w);
@@ -567,12 +622,13 @@ export class Vehicle {
     b.resetForces(true);
     b.resetTorques(true);
     const inv = 1 / S;
-    for (const w of this.wheels) {
+    if (this.indep) this.applyCornerForces(inv);
+    else for (const w of this.wheels) {
       w.accF.multiplyScalar(inv);
       w.FnAvg *= inv;
       b.addForceAtPoint(w.accF, w.hub, true);
     }
-    for (const ax of this.axles) {
+    if (!this.indep) for (const ax of this.axles) {
       const p = ax.p;
       for (let s = 0; s < 2; s++) {
         const side = s === 0 ? -1 : 1;
@@ -590,7 +646,9 @@ export class Vehicle {
     // anti-roll bars + drivetrain torque reactions (engine rock, axle wrap) about the roll axis
     let rollT = 0;
     for (const ax of this.axles) rollT -= ax.accArb * inv;
-    rollT -= (P.engine.inertia * engA + tpf + tpr) * inv;
+    // with independent suspension the diff sits on the body: the prop shaft's torque and its reaction at
+    // the gearbox cancel there, only the engine's own acceleration rocks it
+    rollT -= (P.engine.inertia * engA + (this.indep ? 0 : tpf + tpr)) * inv;
     _v.copy(this.back).multiplyScalar(rollT);
     b.addTorque(_v, true);
     // aero drag
@@ -624,7 +682,7 @@ export class Vehicle {
 
   hubPenDot(w) {
     const ax = w.axle;
-    const vU = ax.vz + w.side * (this.P.track / 2) * Math.cos(ax.phi) * ax.Om;
+    const vU = this.indep ? w.vz : ax.vz + w.side * (this.P.track / 2) * Math.cos(ax.phi) * ax.Om;
     const n = w.n, up = this.up;
     const v = w.vHubPerp;
     w.penDot = -((v.x + up.x * vU) * n.x + (v.y + up.y * vU) * n.y + (v.z + up.z * vU) * n.z);
@@ -694,6 +752,58 @@ export class Vehicle {
     ax.accArb += arb;
   }
 
+  // Independent corners of one axle. Each tyre force is split in the body frame:
+  // - along body up: into the corner (spring, damper, bar);
+  // - sideways: to the body along the line from the contact patch to the roll centre (0, rcY). Its
+  //   vertical part (jacking) is load transfer that bypasses the springs, so a low roll centre rolls more;
+  // - fore-aft: to the body at the road, with a vertical part anti x (com height / wheelbase) x the force
+  //   (anti-dive at the front, anti-squat / anti-lift at the rear).
+  // The bar is a roll stiffness (N·m/rad): force arb x (cR - cL) / track² at each wheel.
+  cornerSubstep(ax, hs, gU) {
+    const P = this.P, p = ax.p, up = this.up, right = this.right, back = this.back;
+    const wl = this.wheels[ax.i * 2], wr = this.wheels[ax.i * 2 + 1];
+    const t2 = P.track / 2, m = p.mass / 2;
+    const tanL = (p.rcY ?? 0) / t2, tanF = (p.anti || 0) * P.com[1] / P.wheelbase, fs = -Math.sign(p.z);
+    const bar = (p.arb || 0) * (wr.c - wl.c) / (P.track * P.track);
+    for (const w of [wl, wr]) {
+      _v.copy(w.n).multiplyScalar(w.Fn).addScaledVector(w.fc, w.Fx).addScaledVector(w.sc, w.Fy);
+      const fu = _v.dot(up), fl = _v.dot(right), fb = _v.dot(back);
+      const jl = -w.side * fl * tanL, jf = fs * fb * tanF;
+      const cd = w.vz - w.vMountU;
+      const S = this.springForce(p, w.c, cd, ax.k) + this.damperForce(p, cd) + w.side * bar;
+      w.vz += hs * ((fu - S - jl - jf) / m + gU);
+      w.c += hs * (w.vz - w.vMountU);
+      w.S = S;
+      w.accU += S; w.accLat += fl; w.accJL += jl; w.accLong += fb; w.accJF += jf;
+      w.FnAvg += w.Fn;
+    }
+  }
+
+  applyCornerForces(inv) {
+    const b = this.body, up = this.up;
+    for (const w of this.wheels) {
+      const p = w.axle.p;
+      w.FnAvg *= inv;
+      // spring + damper + bar at the wheel, and the unsprung weight the corner DOF carries along up
+      this.hubLocal(w, _v2).applyQuaternion(this.quat).add(this.pos);
+      _v.copy(up).multiplyScalar(w.accU * inv + p.mass / 2 * G * up.y);
+      b.addForceAtPoint(_v, _v2, true);
+      // side force + jacking at the roll centre
+      _v2.set(0, p.rcY ?? 0, p.z).applyQuaternion(this.quat).add(this.pos);
+      _v.copy(this.right).multiplyScalar(w.accLat * inv).addScaledVector(up, w.accJL * inv);
+      b.addForceAtPoint(_v, _v2, true);
+      // drive / brake force at the road + anti-dive / anti-squat
+      _v2.set(w.side * this.P.track / 2, 0, p.z).applyQuaternion(this.quat).add(this.pos);
+      _v.copy(this.back).multiplyScalar(w.accLong * inv).addScaledVector(up, w.accJF * inv);
+      b.addForceAtPoint(_v, _v2, true);
+    }
+    for (const ax of this.axles) {
+      const wl = this.wheels[ax.i * 2], wr = this.wheels[ax.i * 2 + 1];
+      ax.c = (wl.c + wr.c) / 2; ax.phi = 0;
+      ax.S[0] = wl.S; ax.S[1] = wr.S;
+    }
+  }
+
   // put the truck back on its wheels
   reset(position, yaw) {
     const b = this.body;
@@ -703,7 +813,7 @@ export class Vehicle {
     b.setLinvel({ x: 0, y: 0, z: 0 }, true);
     b.setAngvel({ x: 0, y: 0, z: 0 }, true);
     for (const ax of this.axles) { ax.vz = 0; ax.Om = 0; ax.phi = 0; }
-    for (const w of this.wheels) { w.ux = w.uy = 0; }
+    for (const w of this.wheels) { w.ux = w.uy = 0; w.vz = 0; }
     const d = this.drivetrain;
     for (let i = 2; i < 6; i++) d.w[i] = 0;
     // the wheels stop dead: drop the converter lock-up and let the engine ride it out (a teleport at

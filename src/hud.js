@@ -424,7 +424,7 @@ export class HUD {
     const q = this.suspKey || (this.suspKey = new Int32Array(26)), prev = this.suspPrev || (this.suspPrev = new Int32Array(26).fill(-1));
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i], ax = w.axle;
-      const comp = ax.c + w.side * (ax.p.springTrack / 2) * Math.sin(ax.phi);
+      const comp = v.wheelComp(w);
       const slip = w.slipNorm || 0;
       q[i * 6] = Math.round((w.FnAvg || 0) / 9.81);
       q[i * 6 + 1] = Math.round(Math.max(0, w.pen) * 1000);
@@ -433,7 +433,7 @@ export class HUD {
       q[i * 6 + 4] = Math.round(w.steer * 100);
       q[i * 6 + 5] = Math.round(Math.min(1, (w.FnAvg || 0) / 12000) * 20);
     }
-    q[24] = Math.round(v.axles[0].phi * 573); q[25] = Math.round(v.axles[1].phi * 573);
+    q[24] = Math.round(v.axleRoll(0) * 573); q[25] = Math.round(v.axleRoll(1) * 573);
     if (q.every((x, i) => x === prev[i])) return;
     prev.set(q);
     const g = this.sctx, px = g.canvas.width, k = px / 240;
@@ -447,8 +447,8 @@ export class HUD {
     g.font = '600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let i = 0; i < 4; i++) {
-      const w = v.wheels[i], ax = w.axle, p = ax.p;
-      const comp = ax.c + w.side * (p.springTrack / 2) * Math.sin(ax.phi);
+      const w = v.wheels[i], p = w.axle.p;
+      const comp = v.wheelComp(w);
       const f = clamp(comp / p.travel, 0, 1);
       const [x, y] = pos[i];
       const slip = Math.min(1, w.slipNorm || 0);
@@ -477,7 +477,7 @@ export class HUD {
     }
     g.fillStyle = 'rgba(255,255,255,0.6)';
     g.font = '600 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
-    g.fillText(`axle twist  F ${(v.axles[0].phi * 57.3).toFixed(1)}°  R ${(v.axles[1].phi * 57.3).toFixed(1)}°`, 120, 121);
+    g.fillText(`${v.indep ? 'susp roll' : 'axle twist'}  F ${(v.axleRoll(0) * 57.3).toFixed(1)}°  R ${(v.axleRoll(1) * 57.3).toFixed(1)}°`, 120, 121);
   }
 
   telemetryText(v, extra) {
@@ -490,7 +490,8 @@ export class HUD {
     v.wheels.forEach((w, i) => {
       s += `${['FL', 'FR', 'RL', 'RR'][i]}   ${f(d.w[2 + i], 1).padStart(7)} ${w.FnAvg.toFixed(0).padStart(6)} ${w.Fx.toFixed(0).padStart(6)} ${w.Fy.toFixed(0).padStart(6)}  ${(w.slipNorm || 0).toFixed(2)}  ${(w.pen * 100).toFixed(1).padStart(5)}  ${w.surf.name}\n`;
     });
-    v.axles.forEach((a, i) => { s += `axle ${i ? 'R' : 'F'} c ${a.c.toFixed(3)}  φ ${(a.phi * 57.3).toFixed(1)}°  springs ${a.S[0].toFixed(0)} / ${a.S[1].toFixed(0)} N\n`; });
+    if (v.indep) v.wheels.forEach((w, i) => { s += `${['FL', 'FR', 'RL', 'RR'][i]} c ${w.c.toFixed(3)}  spring ${w.S.toFixed(0)} N${i % 2 ? '\n' : '   '}`; });
+    else v.axles.forEach((a, i) => { s += `axle ${i ? 'R' : 'F'} c ${a.c.toFixed(3)}  φ ${(a.phi * 57.3).toFixed(1)}°  springs ${a.S[0].toFixed(0)} / ${a.S[1].toFixed(0)} N\n`; });
     if (extra) s += extra;
     return s;
   }

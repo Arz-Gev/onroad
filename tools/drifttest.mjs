@@ -70,11 +70,11 @@ for (let i = 0; i < 240 * 26; i++, t += H) {
   }
 }
 if (phase === 'settle' || phase === 'launch') console.log('never reached the entry speed');
-const hub = v.axles.map(a => (a.droopY + a.c).toFixed(3));
+const hub = v.wheels.map(w => v.hubLocal(w, w.hub.clone()).y.toFixed(3));
 if (held.length) {
   const b = held.map(x => x.beta * 57.3), s = held.map(x => x.sp);
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const sd = a => Math.sqrt(mean(a.map(x => (x - mean(a)) ** 2)));
   console.log(`hold (t > 2 s): beta ${mean(b).toFixed(1)} ± ${sd(b).toFixed(1)} deg, speed ${mean(s).toFixed(0)} ± ${sd(s).toFixed(1)} km/h, ${Math.abs(mean(b) - target * 57.3) < 6 && sd(b) < 5 ? 'HELD' : 'NOT HELD'}`);
 }
-console.log(`hub heights (front, rear): ${hub.join(', ')}`);
+console.log(`hub heights (FL, FR, RL, RR): ${hub.join(', ')}`);
