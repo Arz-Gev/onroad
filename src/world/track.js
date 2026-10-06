@@ -83,6 +83,10 @@ export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer
     });
   }
 
+  // scene queries see new colliders only after a step (the world holds nothing else yet); without it the
+  // first heightAt (the spawn height) misses the ground and the car starts 50 m under the track
+  world.step();
+
   // ground height under (x, z): the highest ground collider below y = 600
   const ray = new RAPIER.Ray({ x: 0, y: 600, z: 0 }, { x: 0, y: -1, z: 0 });
   const isGround = c => ground.has(c.handle);
