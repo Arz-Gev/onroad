@@ -7,7 +7,6 @@ import { shared } from './truckMaterials.js';
 // offset from track / 2.
 
 const _v = new THREE.Vector3();
-const Z = new THREE.Vector3(0, 0, 1);
 const reversingNow = d => (d.mode === 'manual' ? d.manualGear < 0 : d.selector === 'R');
 
 export class CarView extends VehicleView {
@@ -18,15 +17,15 @@ export class CarView extends VehicleView {
   }
 
   update(pos, quat, dt, env) {
-    const m = this.m, v = this.v, P = this.P;
+    const m = this.m, v = this.v;
     m.root.position.copy(pos);
     m.root.quaternion.copy(quat);
     for (let i = 0; i < 4; i++) {
-      const w = v.wheels[i], mw = m.wheels[i], a = w.axle;
-      // axle frame (as the physics: centre at droopY + c, rolled by phi about z) -> body frame
-      _v.set(w.side * P.track / 2 + this.dx[i], 0, 0).applyAxisAngle(Z, a.phi);
-      mw.hub.position.set(_v.x, _v.y + a.droopY + a.c, mw.rest.z);
-      mw.hub.rotation.set(0, 0, a.phi);
+      const w = v.wheels[i], mw = m.wheels[i], roll = v.wheelRoll(w);
+      // physics hub (body frame), plus the model's own track offset along the wheel's roll
+      v.hubLocal(w, _v);
+      mw.hub.position.set(_v.x + this.dx[i] * Math.cos(roll), _v.y + this.dx[i] * Math.sin(roll), mw.rest.z);
+      mw.hub.rotation.set(0, 0, roll);
       mw.steer.rotation.y = -w.steer;
       mw.spin.rotation.x = -w.spin;
     }
