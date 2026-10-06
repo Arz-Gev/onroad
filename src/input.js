@@ -2,6 +2,9 @@
 //
 // BINDINGS is the single source of truth for every control: main.js dispatches the discrete actions,
 // and the HUD hints, the welcome card and the menu's controls page are all generated from it.
+// A binding with `needs` exists only on a car whose capabilities have it (src/cars/): `needs: 'transfer'`
+// (truthy) or `needs: ['lockers', 'axles']` (that exact value). setCapabilities() picks the active set;
+// two bindings may share a key when no car has both.
 // Discrete actions fire immediately from the key/pad event (onAction), not from the game loop.
 // While a menu is open, uiHandler receives the keys / pad buttons instead of the game.
 
@@ -10,6 +13,7 @@ export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8
 
 // keys: labels shown to the player. codes: KeyboardEvent.code values that fire the action.
 // pad: label of the gamepad control. button: pad button index that fires the action.
+// needs: the car capability the control belongs to (see above).
 export const BINDINGS = [
   { id: 'throttle', group: 'Driving', label: 'Throttle', keys: ['W', '↑'], pad: 'RT' },
   { id: 'brake', group: 'Driving', label: 'Brake', keys: ['S', '↓'], pad: 'LT' },
@@ -21,19 +25,20 @@ export const BINDINGS = [
   { id: 'shiftDown', group: 'Gearbox & drivetrain', label: 'Shift down · automatic: selector D → N → R → P', codes: ['KeyQ'], keys: ['Q'], pad: 'X', button: PAD.X },
   { id: 'gearbox', group: 'Gearbox & drivetrain', label: 'Automatic ⇄ manual gearbox', codes: ['KeyM'], keys: ['M'], pad: 'View', button: PAD.VIEW },
   { id: 'autoClutch', group: 'Gearbox & drivetrain', label: 'Manual: auto-clutch on / off · automatic: arcade reverse on / off', codes: ['KeyK'], keys: ['K'] },
-  { id: 'range', group: 'Gearbox & drivetrain', label: 'Transfer case HIGH / LOW (stop first)', codes: ['KeyT'], keys: ['T'], pad: 'D-pad ↓', button: PAD.DOWN },
-  { id: 'centreLock', group: 'Gearbox & drivetrain', label: 'Centre diff lock', codes: ['KeyX'], keys: ['X'], pad: 'D-pad ←', button: PAD.LEFT },
-  { id: 'lockers', group: 'Gearbox & drivetrain', label: 'Axle lockers: rear → front + rear → off', codes: ['KeyZ'], keys: ['Z'], pad: 'D-pad →', button: PAD.RIGHT },
+  { id: 'range', group: 'Gearbox & drivetrain', label: 'Transfer case HIGH / LOW (stop first)', codes: ['KeyT'], keys: ['T'], pad: 'D-pad ↓', button: PAD.DOWN, needs: 'transfer' },
+  { id: 'centreLock', group: 'Gearbox & drivetrain', label: 'Centre diff lock', codes: ['KeyX'], keys: ['X'], pad: 'D-pad ←', button: PAD.LEFT, needs: 'centreDiff' },
+  { id: 'lockers', group: 'Gearbox & drivetrain', label: 'Axle lockers: rear → front + rear → off', codes: ['KeyZ'], keys: ['Z'], pad: 'D-pad →', button: PAD.RIGHT, needs: ['lockers', 'axles'] },
+  { id: 'rearDiff', group: 'Gearbox & drivetrain', label: 'Rear diff: welded → LSD → open', codes: ['KeyZ'], keys: ['Z'], pad: 'D-pad →', button: PAD.RIGHT, needs: ['lockers', 'rearDiff'] },
   { id: 'traction', group: 'Gearbox & drivetrain', label: 'Traction control on / off (brakes a spinning wheel)', codes: ['KeyY'], keys: ['Y'] },
   { id: 'abs', group: 'Gearbox & drivetrain', label: 'ABS on / off (off: wheels can lock under braking)', codes: ['KeyB'], keys: ['B'] },
-  { id: 'rwd', group: 'Gearbox & drivetrain', label: '2WD (rear-wheel drive) ⇄ 4WD · HIGH range only', codes: ['KeyF'], keys: ['F'] },
+  { id: 'rwd', group: 'Gearbox & drivetrain', label: '2WD (rear-wheel drive) ⇄ 4WD · HIGH range only', codes: ['KeyF'], keys: ['F'], needs: 'selectableRwd' },
 
   { id: 'engineStart', group: 'Vehicle', label: 'Start engine', codes: ['KeyI'], keys: ['I'], pad: 'L stick click', button: PAD.LS },
   { id: 'engineStop', group: 'Vehicle', label: 'Stop engine', codes: ['KeyO'], keys: ['O'] },
-  { id: 'pressureDown', group: 'Vehicle', label: 'Tyre pressure down (air down for grip)', codes: ['BracketLeft'], keys: ['['] },
-  { id: 'pressureUp', group: 'Vehicle', label: 'Tyre pressure up', codes: ['BracketRight'], keys: [']'] },
+  { id: 'pressureDown', group: 'Vehicle', label: 'Tyre pressure down (air down for grip)', codes: ['BracketLeft'], keys: ['['], needs: 'tyrePressure' },
+  { id: 'pressureUp', group: 'Vehicle', label: 'Tyre pressure up', codes: ['BracketRight'], keys: [']'], needs: 'tyrePressure' },
   { id: 'headlights', group: 'Vehicle', label: 'Headlights off / low / high', codes: ['KeyL'], keys: ['L'], pad: 'D-pad ↑', button: PAD.UP },
-  { id: 'lightBar', group: 'Vehicle', label: 'Roof light bar', codes: ['KeyJ'], keys: ['J'] },
+  { id: 'lightBar', group: 'Vehicle', label: 'Roof light bar', codes: ['KeyJ'], keys: ['J'], needs: 'lightBar' },
   { id: 'hazards', group: 'Vehicle', label: 'Hazard lights', codes: ['KeyG'], keys: ['G'] },
   { id: 'recover', group: 'Vehicle', label: 'Recover: put the car back on its wheels', codes: ['KeyR'], keys: ['R'], pad: 'B', button: PAD.B },
 
@@ -50,13 +55,29 @@ export const BINDINGS = [
   { id: 'tuning', group: 'Game', label: 'Tuning: engine, gearing, tyres, suspension, colliders (the game keeps running)', codes: ['Tab'], keys: ['Tab'] },
 ];
 
-export const BINDING = Object.fromEntries(BINDINGS.map(b => [b.id, b]));
+// does a car with these capabilities have this binding?
+const hasNeed = (b, caps) => {
+  if (!b.needs) return true;
+  const [key, value] = [].concat(b.needs);
+  return value === undefined ? !!caps[key] : caps[key] === value;
+};
+
+// The active car's controls (setCapabilities): the controls list, hints, key caps and dispatch use these.
+// Until a car is set, only the controls every car has.
+export let BINDING = {};
+export const activeBindings = () => Object.values(BINDING);
+export const hasControl = id => !!BINDING[id];
 const KEY_ACTION = {};
 const PAD_ACTION = {};
-for (const b of BINDINGS) {
-  for (const c of b.codes || []) KEY_ACTION[c] = b.id;
-  if (b.button !== undefined) PAD_ACTION[b.button] = b.id;
+export function setCapabilities(caps = {}) {
+  BINDING = Object.fromEntries(BINDINGS.filter(b => hasNeed(b, caps)).map(b => [b.id, b]));
+  for (const t of [KEY_ACTION, PAD_ACTION]) for (const k in t) delete t[k];
+  for (const b of activeBindings()) {
+    for (const c of b.codes || []) KEY_ACTION[c] = b.id;
+    if (b.button !== undefined) PAD_ACTION[b.button] = b.id;
+  }
 }
+setCapabilities();
 // The F row stays with the browser (F5 reload, F11 fullscreen, F12 devtools), except the bound F3.
 // Every other plain key is swallowed while driving: no page scroll (Space, arrows), no focus moves (Tab),
 // no single-key browser features such as Firefox quick find (/ and ').

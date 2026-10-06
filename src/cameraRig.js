@@ -3,7 +3,7 @@ import * as THREE from 'three';
 export const CAM_MODES = ['chase', 'cockpit', 'hood', 'wheel', 'orbit'];
 export const CAM_NAMES = { chase: 'Chase camera', cockpit: 'Cockpit (first person)', hood: 'Hood camera', wheel: 'Wheel camera (front left)', orbit: 'Free orbit' };
 
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class CameraRig {
@@ -84,8 +84,8 @@ export class CameraRig {
         eye = model.driverEye.clone().add(this.head);
         near = 0.03; fov = 62;
       } else {
-        // on the bonnet, just behind the raised centre section
-        eye = new THREE.Vector3(0, 1.8, -1.0);
+        // on the bonnet (the model says where)
+        eye = model.hoodEye.clone();
         near = 0.08; fov = 60;
       }
       cam.position.copy(eye).applyQuaternion(quat).add(pos);
@@ -95,10 +95,11 @@ export class CameraRig {
       this.orbitYaw -= m.dx * 0.004;
       this.orbitPitch = THREE.MathUtils.clamp(this.orbitPitch + m.dy * 0.003, -0.4, 0.8);
       this.dist = THREE.MathUtils.clamp(this.dist * (1 + m.wheel * 0.08), 3.5, 24);
-      const hub = new THREE.Vector3(-0.78, 0.42, -1.4);
+      // front-left hub at static ride (body frame), from the physics params
+      const P = vehicle.P, hub = _v3.set(-P.track / 2, P.tire.radius, P.axles[0].z);
       const yaw = -0.95 + this.orbitYaw, pitch = 0.1 + this.orbitPitch, d = 1.85;
       const local = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch) * d, Math.sin(pitch) * d, Math.cos(yaw) * Math.cos(pitch) * d).add(hub);
-      local.x = Math.min(local.x, -1.08);
+      local.x = Math.min(local.x, hub.x - 0.3);
       cam.position.copy(local).applyQuaternion(quat).add(pos);
       const look = hub.clone().add(new THREE.Vector3(0.1, 0.05, 0.25)).applyQuaternion(quat).add(pos);
       cam.up.set(0, 1, 0).applyQuaternion(quat);

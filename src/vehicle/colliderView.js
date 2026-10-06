@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { D } from './truckDims.js';
 
 // X-ray view of the physics: chassis collision boxes, wheel side cylinders, tyre outlines against the
 // arch tops, suspension travel gauges, tyre contact patches and the points where the body touches the
@@ -67,8 +66,9 @@ function cylinderLines(n = 32) {
 }
 
 export class ColliderView {
-  constructor(scene, model, vehicle) {
-    this.scene = scene; this.m = model; this.v = vehicle;
+  // body: the car's { archTop, halfWidth } (src/cars/<id>.js): arch-top lines and where the gauges sit
+  constructor(scene, model, vehicle, body) {
+    this.scene = scene; this.m = model; this.v = vehicle; this.outline = body;
     this.enabled = false;
     this.selected = -1;
     this.built = false;
@@ -100,9 +100,9 @@ export class ColliderView {
       this.body.add(cyl, tyre);
       return { cyl, tyre };
     });
-    // arch tops: a short line over each wheel at D.ARCH_TOP
-    const ap = [];
-    for (const z of [D.ARCH_F, D.ARCH_R]) for (const x of [-1, 1]) ap.push(x * 0.78, D.ARCH_TOP, z - 0.34, x * 0.78, D.ARCH_TOP, z + 0.34);
+    // arch tops: a short line over each wheel at the car's arch-top height
+    const ap = [], top = this.outline.archTop, hx = this.v.P.track / 2;
+    for (const a of this.v.P.axles) for (const x of [-1, 1]) ap.push(x * hx, top, a.z - 0.34, x * hx, top, a.z + 0.34);
     this.arches = onTop(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(ap, 3)), lineMat(0xffffff, 0.6)));
     this.body.add(this.arches);
     // travel gauges, outside the body next to each wheel: droop..bump, bump stop zone, current position
@@ -176,7 +176,7 @@ export class ColliderView {
       o.tyre.position.copy(_v); o.tyre.quaternion.copy(_q2); o.tyre.scale.setScalar(R);
       // tyre top against the arch top (body frame): red when it reaches the arch
       const top = _v.y + R;
-      const rub = top > D.ARCH_TOP - 0.01;
+      const rub = top > this.outline.archTop - 0.01;
       o.tyre.material.color.copy(rub ? COL.hit : COL.tyre);
       // side cylinder touching a rock / log / tree
       const hitW = w.sideCollider ? touchPoints(world, w.sideCollider) > 0 : false;
@@ -184,7 +184,7 @@ export class ColliderView {
       // travel gauge: spring compression at this side, 0 = full droop, travel = hard stop
       const g = this.gauges[i];
       const comp = v.wheelComp(w);
-      g.g.position.set(w.side * (D.W + 0.12), ax.droopY, ap.z + (ax.i === 0 ? -0.62 : 0.62));
+      g.g.position.set(w.side * (this.outline.halfWidth + 0.12), ax.droopY, ap.z + (ax.i === 0 ? -0.62 : 0.62));
       g.rail.scale.y = ap.travel;
       g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
       g.mark.position.y = Math.max(-0.02, Math.min(ap.travel + 0.02, comp));

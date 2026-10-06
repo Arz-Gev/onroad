@@ -13,6 +13,9 @@ import { theme, rgba } from './theme.js';
 //   over the cluster, empty by default; a new line slides in at the bottom and pushes the others up,
 //   expired lines fade out upwards.
 //
+// What the cluster shows follows the active car's capabilities (src/cars/): front and centre diff markers
+// on a 4x4 only, the light-bar lamp only on a car with one, the driveline field from what the car has.
+//
 // Cost rules: no layout reads per frame; DOM text/classes are written only when the value changes;
 // bars move with transforms.
 
@@ -41,9 +44,13 @@ const LAMP_ICONS = {
 };
 const LAMP_TITLES = { eng: 'Engine', hb: 'Handbrake', tc: 'Traction control', abs: 'ABS', light: 'Headlights', haz: 'Hazard lights', bar: 'Light bar', snd: 'Sound' };
 
+const REAR_DIFF = { welded: 'Welded diff', lsd: 'LSD', open: 'Open diff' };
+
 export class HUD {
-  constructor(root = document.getElementById('hud')) {
+  // caps: the active car's capabilities (src/cars/)
+  constructor(root = document.getElementById('hud'), caps = {}) {
     this.root = root;
+    this.caps = caps;
     root.innerHTML = `
       <div class="hud-tl">
         <div class="tl-row">
@@ -270,13 +277,14 @@ export class HUD {
       const st = !w.contact ? 'w air' : (w.slipNorm || 0) > 0.95 ? 'w slip' : (w.slipNorm || 0) > 0.7 ? 'w edge' : 'w';
       if (st !== c['w' + i]) { c['w' + i] = st; e.wheels[i].setAttribute('class', st); }
     }
-    // the centre and front diff markers exist only on a car with a transfer case
-    const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0) | (d.fixedRwd ? 8 : 0);
+    // the front and centre diff markers exist only on a 4x4
+    const cap = this.caps, fourByFour = cap.drive === '4x4';
+    const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0);
     if (locks !== c.locks) {
       c.locks = locks;
       const cls = (on, show) => !show ? 'df none' : on ? 'df locked' : 'df';
-      e.diffs[0].setAttribute('class', cls(d.frontLock, !d.fixedRwd));
-      e.diffs[1].setAttribute('class', cls(d.centerLock, !d.fixedRwd));
+      e.diffs[0].setAttribute('class', cls(d.frontLock, fourByFour));
+      e.diffs[1].setAttribute('class', cls(d.centerLock, fourByFour && cap.centreDiff));
       e.diffs[2].setAttribute('class', cls(d.rearLock, true));
     }
 
@@ -300,7 +308,7 @@ export class HUD {
     if (head !== c.headIcon) { const first = c.headIcon === undefined; c.headIcon = head; L.light.innerHTML = LAMP_ICONS[head === 2 ? 'high' : 'low']; if (!first) this.flash(L.light); }
     this.lampState(L.light, 'light', head ? 'on' : 'off');
     this.lampState(L.haz, 'haz', view.lights.hazard ? 'blink' : 'off', view.lights.hazard);
-    const hasBar = !!view.features?.lightBar;
+    const hasBar = !!cap.lightBar;
     if (hasBar !== c.hasBar) { c.hasBar = hasBar; L.bar.hidden = !hasBar; }
     this.lampState(L.bar, 'bar', view.lights.bar ? 'on' : 'off', view.lights.bar);
     const snd = this.soundState;
@@ -309,8 +317,8 @@ export class HUD {
 
     // info row (fields the player changes flash)
     this.field(e.box, 'box', manual ? (d.clutchAssist ? 'Manual' : 'Manual · pedal') : (o.arcade ? 'Auto · arcade' : 'Auto'));
-    const drive = d.fixedRwd ? { welded: 'Welded diff', lsd: 'LSD', open: 'Open diff' }[d.rearDiff] || 'RWD'
-      : `${d.rwd ? '2WD' : '4WD'} · ${d.range === 'low' ? 'Low' : 'High'}`;
+    const drive = !fourByFour ? REAR_DIFF[d.rearDiff] || 'RWD'
+      : `${cap.selectableRwd && d.rwd ? '2WD' : '4WD'}${cap.transfer ? ` · ${d.range === 'low' ? 'Low' : 'High'}` : ''}`;
     this.field(e.drive, 'drive', drive);
     this.field(e.psi, 'psi', fmtPressure(v.pressure, o.pressureUnit));
     let surf = 'Airborne';
@@ -374,7 +382,7 @@ export class HUD {
     else if (rolled > 1.0) id = 'tipRolled';
     else if (engine > 0.6) { id = 'tipEngine'; p = { stalled: d.stalled }; }
     else if (neutral > 1.2) { id = 'tipNeutral'; p = { manual: d.mode === 'manual', sel: d.selector }; }
-    else if (stuck > 3) { id = 'tipStuck'; p = { offroad: !d.fixedRwd }; }
+    else if (stuck > 3) { id = 'tipStuck'; p = { offroad: !!(this.caps.transfer && this.caps.lockers === 'axles') }; }   // suggest only what the car has
     if (!id && ts.id) { if ((ts.clear += dt) < 0.75) return; }   // hysteresis: don't flicker
     ts.clear = 0; ts.id = id;
     this.setHint(id, p);

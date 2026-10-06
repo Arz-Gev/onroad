@@ -3,7 +3,7 @@
 // Prints body heave / pitch / roll and wheel loads every 50 ms after the front axle hits the bump.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 await RAPIER.init();
 const kmh = +(process.argv[2] || 40), bh = +(process.argv[3] || 0.10), bl = +(process.argv[4] || 1.0), side = process.argv[5] || 'both';
 const H = 1 / 240, size = 400, n = 1600, N = n + 1;

@@ -19,7 +19,6 @@ export class VehicleView {
     this.P = vehicle.P;
     this.propAngle = [0, 0];
     this.lights = { head: 0, bar: false, hazard: false }; // head: 0 off, 1 low, 2 high
-    this.features = { lightBar: true };                   // what the HUD shows lamps for
     this.blink = 0;
     this.temp = 0.2;
   }

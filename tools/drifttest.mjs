@@ -8,7 +8,7 @@
 // A held drift = beta stays near the target with the speed roughly steady for the whole hold phase.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeS15Params } from '../src/vehicle/params.js';
+import { makeS15Params } from '../src/cars/s15.js';
 import { SURFACES } from '../src/vehicle/tire.js';
 await RAPIER.init();
 const H = 1 / 240;

@@ -1,9 +1,9 @@
 // Vehicle tuning: a player "setup" (engine, gearing, tyres, suspension, brakes, mass, steering, body
-// colliders) and how it maps onto the physics parameters of params.js.
+// colliders) and how it maps onto the car's physics parameters (src/cars/<id>.js makeParams).
 //
 // applySetup(P, setup) writes the setup into an existing params object in place, so the Vehicle,
-// Drivetrain and view that hold P see the new values on their next step. The stock setup reproduces
-// makeDefenderParams() exactly (tools/simtest.mjs baselines are unchanged).
+// Drivetrain and view that hold P see the new values on their next step. The stock setup reproduces the
+// car's makeParams() exactly (tools/simtest.mjs baselines are unchanged).
 //
 // What changes how (Vehicle.retune):
 // - read every step, so live: engine curve / limiter / shift points, gear ratios, final drive, transfer,
@@ -14,14 +14,16 @@
 // - colliders (chassis boxes, wheel side cylinders): rebuilt on the same rigid body in a few microseconds.
 // Nothing needs a new rigid body, so the car keeps its position and speed through every change.
 //
-// Every car has its own profile (CARS below: params factory, engines, tyre sizes, slider ranges, what the
-// panel shows). carTuning(id) gives the profile's STOCK / RANGES / ENGINES / sanitize; applySetup, analyze,
-// geometry, staticRide and rideRaise pick the profile from P.model. The plain exports (STOCK, RANGES,
-// ENGINES, ENGINE_ORDER, sanitize) are the Defender's, for the headless tools.
+// Every car has its own profile, built from its module in src/cars/ (`tuning`: engines, tyre sizes, slider
+// ranges, panel texts; `capabilities`: transfer case, rear diff types, live switches). carTuning(id) gives
+// the profile's STOCK / RANGES / ENGINES / sanitize; applySetup, analyze, geometry, staticRide and rideRaise
+// pick the profile from P.model (the car id the car's makeParams() writes).
 
-import { makeDefenderParams, makeS15Params } from './params.js';
 import { tireRadialStiffness } from './tire.js';
-import { D } from './truckDims.js';
+import { engineFriction } from './engineCurve.js';
+import { findCar } from '../cars/index.js';
+
+export { engineFriction };
 
 const G = 9.81;
 const DEG = Math.PI / 180;
@@ -32,89 +34,13 @@ const lerpTable = (t, x) => {
   return t[t.length - 1][1];
 };
 
-// engine friction + pumping at full throttle (drivetrain.js substep, thr = 1)
-export const engineFriction = rpm => 12 + 0.0085 * Math.abs(rpm) + 1.2e-6 * rpm * rpm;
-// a published (net, at the flywheel) torque curve -> the gross curve the drivetrain uses
-const gross = net => net.map(([r, t]) => [r, t > 0 ? Math.round(t + engineFriction(r)) : 0]);
-
-// ---------------------------------------------------------------- engines
-// curves: gross torque (Nm) at full throttle. Real figures are net (flywheel) torque: gross() adds
-// the friction the drivetrain subtracts again. shiftRpm: automatic upshift at full throttle.
-const DEFENDER_ENGINES = {
-  v8: {
-    label: '4.6 V8', name: '4.6 V8 petrol', fuel: 'petrol', note: 'Stock. Rover V8, 225 PS. Smooth and quick.',
-    torque: [[0, 0], [400, 150], [800, 300], [1200, 365], [1600, 405], [2000, 435], [2500, 455], [3000, 462],
-      [3500, 458], [4000, 445], [4500, 420], [5000, 385], [5500, 330], [6000, 250], [6500, 120]],
-    idleRpm: 720, limiterRpm: 5350, redlineRpm: 5000, shiftRpm: 4800, inertia: 0.22,
-  },
-  works: {
-    label: '5.0 V8', name: 'Works V8 5.0 petrol', fuel: 'petrol', note: 'Land Rover Classic Works V8: 405 PS, 515 Nm. Revs to 6800.',
-    torque: gross([[0, 0], [400, 150], [800, 330], [1200, 380], [2000, 430], [3000, 475], [4000, 505], [4500, 515],
-      [5000, 510], [5500, 495], [6000, 474], [6500, 430], [7000, 300], [7500, 120]]),
-    idleRpm: 650, limiterRpm: 6800, redlineRpm: 6500, shiftRpm: 6300, inertia: 0.2,
-  },
-  v35: {
-    label: '3.5 V8', name: '3.5 V8 petrol (carburettor)', fuel: 'petrol', note: 'The 1983 110: 114 PS, 251 Nm. Slow but sweet.',
-    torque: gross([[0, 0], [400, 80], [800, 170], [1200, 210], [1600, 230], [2000, 243], [2500, 251], [3000, 247],
-      [3500, 232], [4000, 203], [4500, 170], [5000, 125], [5500, 70], [6000, 20]]),
-    idleRpm: 700, limiterRpm: 5000, redlineRpm: 4750, shiftRpm: 4500, inertia: 0.24,
-  },
-  tdi300: {
-    label: '300Tdi', name: '2.5 300Tdi diesel', fuel: 'diesel', note: '1994–98: 111 PS, 265 Nm at 1800. Pulls low, runs out of breath at 4000.',
-    torque: gross([[0, 0], [400, 50], [800, 130], [1200, 200], [1500, 245], [1800, 265], [2400, 255], [3000, 235],
-      [3500, 215], [4000, 198], [4400, 120], [4700, 40]]),
-    idleRpm: 720, limiterRpm: 4400, redlineRpm: 4000, shiftRpm: 3900, inertia: 0.32,
-  },
-  td5: {
-    label: 'Td5', name: '2.5 Td5 diesel', fuel: 'diesel', note: '1998–2007: 122 PS, 300 Nm at 1950. Pulls from low revs, takes its time to 100.',
-    torque: gross([[0, 0], [400, 60], [800, 150], [1200, 215], [1500, 265], [1950, 300], [2500, 292], [3000, 270],
-      [3500, 245], [4000, 215], [4200, 205], [4500, 150], [4800, 60]]),
-    idleRpm: 760, limiterRpm: 4600, redlineRpm: 4300, shiftRpm: 4200, inertia: 0.3,
-  },
-  puma: {
-    label: '2.4 TDCi', name: '2.4 TDCi Puma diesel', fuel: 'diesel', note: '2007–11: 122 PS, 360 Nm at 2000. The most torque of the diesels.',
-    torque: gross([[0, 0], [400, 60], [800, 140], [1200, 230], [1500, 310], [2000, 360], [2500, 355], [3000, 315],
-      [3500, 250], [4000, 170], [4300, 60]]),
-    idleRpm: 780, limiterRpm: 4200, redlineRpm: 4000, shiftRpm: 3800, inertia: 0.3,
-  },
-};
-const DEFENDER_ENGINE_ORDER = ['v8', 'works', 'v35', 'tdi300', 'td5', 'puma'];
-
-// SR20DET net torque without boost (the AC curve, params.js) times (1 + boost); full boost from refRpm
-const SR20_NA = [[0, 0], [500, 176], [1000, 182], [1500, 198], [2000, 208], [2500, 217], [3000, 222], [3500, 247],
-  [4000, 255], [4500, 261], [5000, 266], [5500, 267], [6000, 261], [6500, 254], [7000, 239], [7500, 228],
-  [8000, 214], [8500, 190], [9000, 60]];
-const sr20 = (bar, refRpm, gamma = 2.75) => gross(SR20_NA.map(([r, t]) => [r, r === 0 ? 0 : t * (1 + bar * Math.min(1, Math.pow(r / refRpm, gamma)))]));
-const S15_ENGINES = {
-  street: {
-    label: 'SR20DET', name: 'SR20DET, built street', fuel: 'petrol', note: 'Stock for this car: 0.75 bar, full boost from 3800 rpm. About 400 hp, revs to 8200.',
-    torque: sr20(0.75, 3800),   // the same numbers as makeS15Params
-    idleRpm: 950, limiterRpm: 8200, redlineRpm: 7800, shiftRpm: 7500, inertia: 0.16,
-  },
-  factory: {
-    label: 'SR20 factory', name: 'SR20DET, factory', fuel: 'petrol', note: 'The Spec R as it left the factory: 250 PS, 275 Nm. Light, easy to balance.',
-    torque: sr20(0.05, 3500, 2.2),
-    idleRpm: 850, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.16,
-  },
-  bigTurbo: {
-    label: 'SR20 big turbo', name: 'SR20DET, big single turbo', fuel: 'petrol', note: '1.5 bar on a big single: lag below 4500, then about 570 hp. Hard to meter out.',
-    torque: sr20(1.5, 4800, 3.6),
-    idleRpm: 1000, limiterRpm: 8600, redlineRpm: 8200, shiftRpm: 8000, inertia: 0.15,
-  },
-  jz: {
-    label: '2JZ-GTE', name: '2JZ-GTE swap, single turbo', fuel: 'petrol', note: 'The classic swap: 3.0 straight six, about 650 Nm from 4000 rpm, 530 hp. Heavier nose, huge torque.',
-    torque: gross([[0, 0], [500, 200], [1000, 250], [2000, 330], [3000, 480], [3500, 600], [4000, 640], [5000, 650],
-      [6000, 620], [6500, 580], [7000, 520], [7500, 400], [8000, 150]]),
-    idleRpm: 800, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.24,
-  },
-};
-const S15_ENGINE_ORDER = ['street', 'factory', 'bigTurbo', 'jz'];
-
 // ---------------------------------------------------------------- car profiles
-// make: params factory · engines / engineOrder · tyre: stock size (overall diameter, inches) and width
-// (widthUnit), the chip options, wheelMass(inches, width) · ranges: slider ranges that differ from
-// BASE_RANGES · cargoPos / roofPos: where the load sits · archTop: arch top height (body frame) ·
-// mu / traction / crr: the test surface for the brake and 0-100 estimates · ui: what the panel shows.
+// A car's `tuning` (src/cars/<id>.js): engines / engineOrder / stockEngine · named(base params, engine,
+// preset) · tyre: stock size (overall diameter, inches) and width (widthUnit), the chip options,
+// wheelMass(inches, width) · ranges: slider ranges that differ from BASE_RANGES · cargoPos / roofPos: where
+// the load sits · mu / traction / crr / surface: the test surface for the brake and 0-100 estimates ·
+// defaultSetup: an exported setup that replaces the stock one · migrate(setup, suspension): fixes for old
+// saved setups · ui: what the panel shows and its texts.
 const BASE_RANGES = {
   'engine.torque': [0.5, 2, 0.05], 'engine.revs': [-1000, 1500, 50],
   'gearbox.ratio': [0.5, 6, 0.01], 'gearbox.final': [2.5, 6, 0.01], 'gearbox.high': [0.9, 1.8, 0.001], 'gearbox.low': [1.8, 5.5, 0.01],
@@ -129,49 +55,17 @@ const BASE_RANGES = {
 };
 const DIFF_TYPES = ['welded', 'lsd', 'open'];
 
-const CARS = {
-  defender: {
-    make: makeDefenderParams,
-    engines: DEFENDER_ENGINES, engineOrder: DEFENDER_ENGINE_ORDER, stockEngine: 'v8',
-    named: (B, E, preset) => (preset === 'v8' ? B.name : 'Defender 110 ' + E.label),
-    tyre: { size: 33, width: 10.5, widthUnit: 'in', sizes: [31, 32, 33, 34, 35, 37], widths: [9.5, 10.5, 11.5, 12.5, 13.5] },
-    // steel rim + hub part plus a tyre that grows with diameter and width; 42 kg stock
-    wheelMass: (inches, width) => 20 + 22 * Math.pow(inches / 33, 2.2) * (width / 10.5),
-    colliderNames: ['Cabin / rear body', 'Engine bay', 'Front bumper', 'Rear bumper', 'Chassis rails', 'Roof rack', 'Spare wheel', 'Belly', 'Fuel tank'],
-    ranges: {},
-    cargoPos: [0, 0.98, 1.45],    // load bay floor, behind the rear seats
-    roofPos: [0, 2.45, 0.75],     // on the rack
-    archTop: D.ARCH_TOP,
-    mu: 0.72, traction: 0.76, crr: 0.026, surface: 'dirt', surfaceName: 'dirt',
-    ui: { transfer: true, lift: 'Lift', cargo: 'Cargo', roof: true, crawl: true, offroadGeo: true, diff: false, live: ['range', 'centreLock', 'rearLock', 'frontLock', 'traction', 'abs', 'rwd'], noun: 'truck' },
-  },
-  s15: {
-    make: makeS15Params,
-    engines: S15_ENGINES, engineOrder: S15_ENGINE_ORDER, stockEngine: 'street',
-    named: B => B.name,
-    // 265/35R18 on the model is ~26" across; the physics tyre is 0.245 m wide
-    tyre: { size: 26, width: 245, widthUnit: 'mm', sizes: [24, 25, 26, 27], widths: [215, 225, 235, 245, 255, 265, 275] },
-    wheelMass: (inches, width) => 9 + 13 * Math.pow(inches / 26, 2.2) * (width / 245),
-    colliderNames: ['Lower body', 'Cabin', 'Rear wing'],
-    ranges: {
-      'tyres.size': [24, 27, 1], 'tyres.width': [215, 275, 10], 'tyres.press': [15, 45, 1],
-      'suspension.lift': [-0.05, 0.05, 0.005], 'suspension.k': [20000, 160000, 500], 'suspension.bump': [800, 8000, 100],
-      'suspension.rebound': [1200, 12000, 100], 'suspension.arb': [0, 30000, 500], 'suspension.travel': [0.05, 0.16, 0.005],
-      'mass.cargo': [0, 200, 5], 'mass.comY': [-0.1, 0.15, 0.01],
-      'steering.lock': [30, 70, 0.5], 'steering.ratio': [9, 18, 0.5],
-    },
-    cargoPos: [0, 0.5, 1.75],     // spare-wheel well in the boot
-    roofPos: [0, 1.25, 0.2],
-    archTop: 0.74,
-    mu: 1.05, traction: 1.1, crr: 0.011, surface: 'asphalt', surfaceName: 'asphalt',
-    ui: { transfer: false, lift: 'Ride height', cargo: 'Ballast (boot)', roof: false, crawl: false, offroadGeo: false, diff: true, live: ['traction', 'abs'], noun: 'car' },
-  },
-};
-
-export const carOf = P => (P && CARS[P.model] ? P.model : 'defender');
+// a car without a transfer case drives through a 1:1 "high range"
+const NO_TRANSFER = { high: 1, low: 1 };
+export const transferOf = P => P.transfer || NO_TRANSFER;
+// the panel's live driveline switches a car has (its capabilities)
+const liveSwitches = cap => [cap.transfer && 'range', cap.centreDiff && 'centreLock', ...(cap.lockers === 'axles' ? ['rearLock', 'frontLock'] : []), 'traction', 'abs', cap.selectableRwd && 'rwd'].filter(Boolean);
 
 function makeProfile(id) {
-  const C = CARS[id], BASE = C.make();
+  const car = findCar(id);
+  if (!car) throw new Error(`tuning: unknown car '${id}'`);
+  const C = car.tuning, cap = car.capabilities, BASE = car.makeParams();
+  const ui = { ...C.ui, transfer: !!cap.transfer, diff: cap.lockers === 'rearDiff', live: liveSwitches(cap) };
   const RANGES = { ...BASE_RANGES, ...C.ranges };
   const ENGINES = C.engines;
   const tyreRadius = inches => BASE.tire.radius * inches / C.tyre.size;
@@ -182,7 +76,7 @@ function makeProfile(id) {
     const frac = i === 0 ? (L / 2 - P.com[2]) / L : (L / 2 + P.com[2]) / L;
     return clamp(P.bodyMass * G * frac / 2 / a.k - a.preload, 0, a.travel);
   };
-  // unsprung axle mass position and the sprung COM implied by the stock total COM (params.js)
+  // unsprung axle mass position and the sprung COM implied by the stock total COM (makeParams)
   const SPRUNG_COM = (() => {
     const P = BASE, ms = P.bodyMass, m = ms + P.axles[0].mass + P.axles[1].mass;
     const ay = a => a.droopY + staticCompression(P, a);
@@ -203,7 +97,8 @@ function makeProfile(id) {
       gearbox: {
         auto: [...P.auto.ratios], autoRev: P.auto.reverse,
         manual: [...P.manual.ratios], manualRev: P.manual.reverse,
-        final: P.finalDrive, high: P.transfer.high, low: P.transfer.low,
+        final: P.finalDrive,
+        ...(P.transfer ? { high: P.transfer.high, low: P.transfer.low } : {}),
       },
       tyres: { size: C.tyre.size, width: C.tyre.width, pressF: P.tire.pressure, pressR: P.tire.pressure, grip: 1 },
       suspension: { lift: 0, front: axle(f), rear: axle(r) },
@@ -212,7 +107,7 @@ function makeProfile(id) {
       steering: { lock: P.steer.maxAngle / DEG, ratio: P.steer.ratio },
       colliders: P.colliders.map((box, i) => ({ name: C.colliderNames[i] || `Box ${i + 1}`, box: [...box] })),
     };
-    if (C.ui.diff) { const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 }; s.diff = { type: P.rearDiff || 'welded', preload: L.preload, power: L.power, coast: L.coast }; }
+    if (ui.diff) { const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 }; s.diff = { type: P.rearDiff || 'welded', preload: L.preload, power: L.power, coast: L.coast }; }
     return s;
   }
 
@@ -232,7 +127,7 @@ function makeProfile(id) {
     for (const k of ['auto', 'manual']) if (Array.isArray(g[k]) && g[k].length === out.gearbox[k].length) out.gearbox[k] = g[k].map((v, i) => num(v, 'gearbox.ratio', out.gearbox[k][i]));
     for (const k of ['autoRev', 'manualRev']) out.gearbox[k] = num(g[k], 'gearbox.ratio', out.gearbox[k]);
     out.gearbox.final = num(g.final, 'gearbox.final', out.gearbox.final);
-    if (C.ui.transfer) for (const k of ['high', 'low']) out.gearbox[k] = num(g[k], 'gearbox.' + k, out.gearbox[k]);
+    if (ui.transfer) for (const k of ['high', 'low']) out.gearbox[k] = num(g[k], 'gearbox.' + k, out.gearbox[k]);
     const t = s.tyres || {};
     out.tyres.size = Math.round(num(t.size, 'tyres.size', out.tyres.size));
     out.tyres.width = num(t.width, 'tyres.width', out.tyres.width);
@@ -240,16 +135,14 @@ function makeProfile(id) {
     out.tyres.pressR = num(t.pressR, 'tyres.press', out.tyres.pressR);
     out.tyres.grip = num(t.grip, 'tyres.grip', out.tyres.grip);
     const su = clone(s.suspension || {});
-    // v1 setups carry the Oct 2 anti-roll bars (8000 / 8500, rear-biased: the truck spun out when you lifted
-    // off at speed). Untouched stock values there take the current stock bars.
-    if (id === 'defender' && !(s.v >= 2) && su.front?.arb === 8000 && su.rear?.arb === 8500) { delete su.front.arb; delete su.rear.arb; }
+    C.migrate?.(s, su);
     out.suspension.lift = num(su.lift, 'suspension.lift', out.suspension.lift);
     for (const ax of ['front', 'rear']) for (const k of ['k', 'bump', 'rebound', 'arb', 'travel']) out.suspension[ax][k] = num(su[ax]?.[k], 'suspension.' + k, out.suspension[ax][k]);
     const b = s.brakes || {};
     for (const k of ['force', 'bias', 'handbrake']) out.brakes[k] = num(b[k], 'brakes.' + k, out.brakes[k]);
     const m = s.mass || {};
     for (const k of ['cargo', 'comY']) out.mass[k] = num(m[k], 'mass.' + k, out.mass[k]);
-    if (C.ui.roof) out.mass.roof = num(m.roof, 'mass.roof', out.mass.roof);
+    if (ui.roof) out.mass.roof = num(m.roof, 'mass.roof', out.mass.roof);
     const st = s.steering || {};
     for (const k of ['lock', 'ratio']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
     if (out.diff) {
@@ -290,7 +183,8 @@ function makeProfile(id) {
     const g = s.gearbox;
     P.auto.ratios = [...g.auto]; P.auto.reverse = g.autoRev;
     P.manual.ratios = [...g.manual]; P.manual.reverse = g.manualRev;
-    P.finalDrive = g.final; P.transfer.high = g.high; P.transfer.low = g.low;
+    P.finalDrive = g.final;
+    if (P.transfer) { P.transfer.high = g.high; P.transfer.low = g.low; }
     // tyres: size scales the whole wheel (rim too, so the sidewall keeps its proportion)
     const t = s.tyres, R = tyreRadius(t.size), sc = R / B.tire.radius;
     const wm = wheelMass(t.size, t.width), wm0 = wheelMass(C.tyre.size, C.tyre.width);
@@ -332,7 +226,7 @@ function makeProfile(id) {
       (P.bodyMass * sprung[1] + P.axles.reduce((x, a) => x + a.mass * axY(a), 0)) / mt,
       (P.bodyMass * sprung[2] + P.axles.reduce((x, a) => x + a.mass * a.z, 0)) / mt,
     ];
-    // stock: exactly the params.js numbers (no rounding drift in the baselines)
+    // stock: exactly the makeParams numbers (no rounding drift in the baselines)
     const isStockMass = m.cargo === 0 && m.roof === 0 && m.comY === 0 && su.lift === 0 && t.size === C.tyre.size && t.width === C.tyre.width;
     P.com = isStockMass ? [...B.com] : com;
     // inertia: stock body + parallel-axis terms of the added masses about the new COM + the COM shift
@@ -356,12 +250,12 @@ function makeProfile(id) {
     return P;
   }
 
-  // The car's stock setup. Paste an exported setup (panel: Export) as DEFAULT_SETUPS[id] to make it the new
-  // stock: the Stock button, new players and the panel's "stock" marks all use it.
-  const STOCK = DEFAULT_SETUPS[id] ? fill(stockSetup(), DEFAULT_SETUPS[id]) : stockSetup();
+  // The car's stock setup. Paste an exported setup (panel: Export) as `tuning.defaultSetup` in the car's
+  // module to make it the new stock: the Stock button, new players and the panel's "stock" marks all use it.
+  const STOCK = C.defaultSetup ? fill(stockSetup(), C.defaultSetup) : stockSetup();
   return {
-    id, C, BASE, RANGES, ENGINES, ENGINE_ORDER: C.engineOrder, STOCK, ui: C.ui, tyre: C.tyre,
-    make: C.make, staticCompression, tyreRadius, wheelMass, applySetup,
+    id, car, C, BASE, RANGES, ENGINES, ENGINE_ORDER: C.engineOrder, STOCK, ui, tyre: C.tyre,
+    make: car.makeParams, staticCompression, tyreRadius, wheelMass, applySetup,
     sanitize: x => fill(STOCK, x),
     // how much higher the body sits than stock at static ride (bigger tyres + lift); spawn / teleport height
     rideRaise: P => (P.tire.radius - BASE.tire.radius) + (BASE.axles[0].droopY - P.axles[0].droopY),
@@ -370,21 +264,15 @@ function makeProfile(id) {
 
 export const clone = o => JSON.parse(JSON.stringify(o));
 
-// exported setups pasted here become that car's stock (null = params.js as it is)
-const DEFAULT_SETUPS = { defender: null, s15: null };
-
 const profiles = {};
-export const carTuning = id => { const k = CARS[id] ? id : 'defender'; return profiles[k] || (profiles[k] = makeProfile(k)); };
-const of = P => carTuning(carOf(P));
-
-const DEF = carTuning('defender');
-export const { STOCK, RANGES, ENGINES, ENGINE_ORDER, sanitize } = DEF;
-export const tyreRadius = DEF.tyreRadius, wheelMass = DEF.wheelMass;
-export const CARGO_POS = CARS.defender.cargoPos, ROOF_POS = CARS.defender.roofPos;
+// the tuning profile of a car (by id, see src/cars/index.js); throws for an unknown id
+export const carTuning = id => profiles[id] || (profiles[id] = makeProfile(id));
+// the profile of the car a params object belongs to
+const of = P => carTuning(P.model);
 
 export const applySetup = (P, s) => of(P).applySetup(P, s);
 export const rideRaise = P => of(P).rideRaise(P);
-export function makeTunedParams(setup, id = 'defender') { const T = carTuning(id); return T.applySetup(T.make(), setup); }
+export function makeTunedParams(setup, id) { const T = carTuning(id); return T.applySetup(T.make(), setup); }
 const staticCompression = (P, a) => of(P).staticCompression(P, a);
 
 // ---------------------------------------------------------------- consequences (panel readouts)
@@ -447,7 +335,7 @@ export function geometry(P, pressF, pressR, pts0 = null) {
   const diff = Math.min(ride[0].hubH, ride[1].hubH) - 0.135;
   // tyre top vs the arch top (body frame) at full bump, and with one wheel pushed up by
   // full axle articulation (one spring on its stop, the other at full droop)
-  const archTop = of(P).C.archTop;
+  const archTop = of(P).car.body.archTop;
   const arch = P.axles.map(a => {
     const bump = archTop - (a.droopY + a.travel + R);
     const twist = archTop - (a.droopY + a.travel / 2 * (1 + P.track / (a.springTrack ?? P.track)) + R);
@@ -487,8 +375,9 @@ export function analyze(P, setup, gearbox = 'auto') {
   const R = P.tire.radius, Re = R - 0.012;
   const box = gearbox === 'manual' ? P.manual.ratios : P.auto.ratios;
   const vAt = (ratio, tr) => (P.engine.limiterRpm * Math.PI / 30) / (ratio * tr * P.finalDrive) * Re * 3.6;
-  out.gears = box.map(g => ({ ratio: g, high: vAt(g, P.transfer.high), low: vAt(g, P.transfer.low) }));
-  out.crawl = box[0] * P.transfer.low * P.finalDrive;
+  const TR = transferOf(P);
+  out.gears = box.map(g => ({ ratio: g, high: vAt(g, TR.high), low: vAt(g, TR.low) }));
+  out.crawl = box[0] * TR.low * P.finalDrive;
   // top speed: power against drag + rolling resistance, capped by the limiter in top gear
   const C = of(P).C;
   const crr = C.crr * Math.sqrt(28 / Math.max(t.pressF, 4));
@@ -497,9 +386,9 @@ export function analyze(P, setup, gearbox = 'auto') {
     // best gear at this speed
     let best = 0;
     for (const g of box) {
-      const w = v / Re * g * P.transfer.high * P.finalDrive, rpm = w * 30 / Math.PI;
+      const w = v / Re * g * TR.high * P.finalDrive, rpm = w * 30 / Math.PI;
       if (rpm > P.engine.limiterRpm || rpm < 900) continue;
-      best = Math.max(best, netTorque(P, rpm) * g * P.transfer.high * P.finalDrive * 0.9 / Re);
+      best = Math.max(best, netTorque(P, rpm) * g * TR.high * P.finalDrive * 0.9 / Re);
     }
     const need = 0.5 * P.aero.rho * P.aero.cdA * v * v + crr * mt * G;
     if (best >= need) vmax = v; else if (vmax > 0) break;
@@ -529,7 +418,7 @@ export function estimateAccel(P, gearbox = 'auto', psi = 20) {
   const E = P.engine, auto = gearbox !== 'manual';
   const box = auto ? P.auto.ratios : P.manual.ratios;
   const mt = P.bodyMass + P.axles[0].mass + P.axles[1].mass;
-  const Re = P.tire.radius - 0.012, tr = P.transfer.high * P.finalDrive;
+  const Re = P.tire.radius - 0.012, tr = transferOf(P).high * P.finalDrive;
   const C = of(P).C;
   const crr = C.crr * Math.sqrt(28 / Math.max(psi, 4));
   const traction = C.traction * mt * G * (P.tire.grip ?? 1);   // what traction control lets through on the test surface
@@ -569,7 +458,7 @@ export function estimateAccel(P, gearbox = 'auto', psi = 20) {
   return { t100: v >= 100 / 3.6 ? t : null, t60 };
 }
 
-// Export: the setup as JSON. Pasting it over STOCK (or into params.js) makes it the truck's new stock.
+// Export: the setup as JSON. Pasting it as `tuning.defaultSetup` in the car's module makes it the new stock.
 export function exportJSON(setup) {
   const s = clone(setup);
   const round = x => (typeof x === 'number' ? Math.round(x * 1e4) / 1e4 : x);

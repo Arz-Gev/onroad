@@ -2,7 +2,7 @@
 //   node tools/starttest.mjs [auto|manual] [N|P|D]
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { SURFACES } from '../src/vehicle/tire.js';
 await RAPIER.init();
 const H = 1 / 240, mode = process.argv[2] || 'auto', sel = process.argv[3] || 'P';

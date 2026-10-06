@@ -11,7 +11,7 @@ export { createMaterials };
 // Procedural Defender 110 station wagon, modelled after reference.webp.
 // Local frame matches physics: +x right, +y up, -z forward, y = 0 ground at static ride.
 // Body parts live in truckBody.js (exterior), truckInterior.js (cabin), truckLights.js (lamps);
-// this file assembles them with the running gear, which follows params.js geometry.
+// this file assembles them with the running gear, which follows the geometry in src/cars/defender.js.
 
 // ---------------------------------------------------------------- wheel
 let _tireGeo = null;
@@ -141,7 +141,7 @@ export function buildTruck(P) {
   spare.steer.rotation.y = -Math.PI / 2;
   add(spare.steer);
 
-  // ---------------- axles, suspension, wheels (positions from params.js)
+  // ---------------- axles, suspension, wheels (positions from src/cars/defender.js)
   const wheels = [];
   const axles = [];
   const suspension = [];
@@ -223,5 +223,6 @@ export function buildTruck(P) {
     needles: cab.needles, gaugeMat: cab.gaugeMat, needleMat: cab.needleMat, warnMat: cab.warnMat,
     steeringWheel: cab.steeringWheel, gearLever: cab.gearLever, transferLever: cab.transferLever, spare,
     driverEye: cab.driverEye,
+    hoodEye: new THREE.Vector3(0, 1.8, -1.0),   // hood camera: on the bonnet, just behind the raised centre section
   };
 }

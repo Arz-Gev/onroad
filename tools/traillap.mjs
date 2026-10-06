@@ -4,7 +4,7 @@
 // "digital" mimics keyboard steering (full lock with the game's speed-sensitive limit, on/off).
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vehicle } from '../src/vehicle/Vehicle.js';
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { Terrain } from '../src/world/terrain.js';
 import { buildProps } from '../src/world/props.js';
 await RAPIER.init();

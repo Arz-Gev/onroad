@@ -9,7 +9,7 @@ import * as THREE from 'three';
 const noop = new Proxy(function () {}, { get: (t, k) => (k === 'data' ? new Uint8ClampedArray(4) : noop), apply: () => noop, set: () => true });
 globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => noop, style: {} }) };
 const { buildTruck } = await import('../src/vehicle/truckModel.js');
-import { makeDefenderParams } from '../src/vehicle/params.js';
+import { makeDefenderParams } from '../src/cars/defender.js';
 import { geometry } from '../src/vehicle/tuning.js';
 const P = makeDefenderParams();
 const m = buildTruck(P);
