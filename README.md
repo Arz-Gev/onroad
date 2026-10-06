@@ -2,6 +2,21 @@
 
 A JDM touge drifting game built on the Offroad Defender engine. **See PLAN.md** for what carries over, what gets replaced and the build order. Right now it is still the offroad game, unchanged; the rest of this README describes that game.
 
+## Assetto Corsa tracks and cars
+
+Converted content lives in `public/tracks/` and `public/cars/` and is gitignored (too big for git). Convert locally:
+
+```
+node tools/kn5/check.mjs <folder>                    # which .kn5 files are CSP-encrypted (those can't be converted)
+node tools/kn5/convert-track.mjs <ac track folder>   # → public/tracks/<id>/ (track.glb, textures/, track.json)
+npm run dev                                          # then open /viewer.html?track=<id> (&view=top)
+```
+
+The converter is our own (`tools/kn5/`): it reads the kn5, merges meshes per material and physics surface,
+keeps power-of-two DXT textures as DDS and transcodes the rest to PNG, and writes the spawn markers
+(`AC_START_n`, `AC_PIT_n`, `AC_HOTLAP_START_n`), surfaces and the AI racing line into `track.json`.
+`src/world/acTrack.js` loads the result and rebuilds the materials from the AC shader info.
+
 ## Inherited: Offroad Defender
 
 Three.js + Rapier off-road sandbox with a procedural Defender 110 (built from `reference.webp`).
