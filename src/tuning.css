@@ -25,8 +25,21 @@ body.paused .tune { visibility: hidden; }
 .tn-bar .tn-i { border-color: var(--line); }
 
 .tn-bar { flex: none; display: flex; gap: 4px; padding: 0 12px 10px; }
-.tn-setups { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--txt); font-size: 12px; }
-.tn-setups option { background: #0a0a0a; }
+.tn-pick { flex: 1 1 auto; min-width: 0; position: relative; }
+.tn-setups { width: 100%; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 9px; border-radius: 7px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--txt); font: 500 12px/1 var(--sans); cursor: pointer; text-align: left; transition: background 0.12s; }
+.tn-setups:hover, .tn-setups[aria-expanded=true] { background: rgba(255, 255, 255, 0.08); }
+.tn-setups span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn-setups.custom span { color: var(--dim); }
+.tune .tn-setups .ic { width: 14px; height: 14px; color: var(--faint); transform: rotate(90deg); transition: transform 0.12s; }
+.tune .tn-setups[aria-expanded=true] .ic { transform: rotate(-90deg); }
+.tn-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 4px; border: 1px solid var(--line-2); border-radius: 9px; background: #0b0b0b; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); scrollbar-color: rgba(255, 255, 255, 0.2) transparent; scrollbar-width: thin; }
+.tn-opt { flex: none; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--txt); font: 12px/1 var(--sans); text-align: left; cursor: pointer; }
+.tn-opt:hover { background: rgba(255, 255, 255, 0.08); }
+.tn-opt span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tune .tn-opt .ic { width: 14px; height: 14px; visibility: hidden; }
+.tune .tn-opt[aria-selected=true] .ic { visibility: visible; }
+.tn-sep { flex: none; height: 1px; margin: 3px 4px; background: var(--line); }
+.tn-none { padding: 6px 8px; color: var(--faint); font-size: 11.5px; }
 .tn-b { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.04); color: var(--txt); font: 500 12px/1 var(--sans); cursor: pointer; white-space: nowrap; }
 .tn-b:hover { background: rgba(255, 255, 255, 0.1); }
 .tn-b.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
