@@ -84,7 +84,10 @@ export class TuningPanel {
         <button type="button" class="tn-i" data-act="close" aria-label="Close" title="Close · Tab">${icon('x')}</button>
       </header>
       <div class="tn-bar">
-        <select class="tn-setups" aria-label="Saved setups"></select>
+        <div class="tn-pick">
+          <button type="button" class="tn-setups" data-act="setups" aria-haspopup="listbox" aria-expanded="false" aria-label="Saved setups"><span></span>${icon('chevron')}</button>
+          <div class="tn-menu" role="listbox" hidden></div>
+        </div>
         <button type="button" class="tn-i" data-act="saveas" aria-label="Save as" title="Save as…">${icon('save')}</button>
         <button type="button" class="tn-i" data-act="stock" aria-label="Stock" title="Everything back to stock">${icon('recover')}</button>
         <button type="button" class="tn-i" data-act="export" aria-label="Export" title="Export">${icon('download')}</button>
@@ -98,11 +101,11 @@ export class TuningPanel {
     this.sum = el.querySelector('.tn-sum');
     this.io = el.querySelector('.tn-io');
     this.sel = el.querySelector('.tn-setups');
+    this.menu = el.querySelector('.tn-menu');
     this.buildSections();
     this.renderSetups();
 
     el.addEventListener('input', e => this.onInput(e));
-    el.addEventListener('change', e => this.onChange(e));
     el.addEventListener('click', e => this.onClick(e));
     el.addEventListener('dblclick', e => {
       const r = e.target.closest('input[type=range][data-path]');
@@ -114,6 +117,9 @@ export class TuningPanel {
       if (a && el.contains(a) && !a.matches('input[type=text], textarea, select')) a.blur();
     }, 0));
     el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+    // the setups menu closes on a click elsewhere or Esc (before the game sees the key)
+    document.addEventListener('pointerdown', e => { if (!this.menu.hidden && !e.target.closest('.tn-pick')) this.setMenu(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !this.menu.hidden) { e.stopPropagation(); e.preventDefault(); this.setMenu(false); } }, true);
   }
 
   // section definitions: rows + a readout function
@@ -248,9 +254,18 @@ export class TuningPanel {
   }
 
   renderSetups() {
-    const names = Object.keys(this.state.setups);
-    this.sel.innerHTML = `<option value="">${this.matchName() ? escapeHTML(this.matchName()) : 'Current setup'}</option>` + names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
+    // Stock is always listed; a setup that matches no entry shows as an unpickable "Custom" line
+    const names = Object.keys(this.state.setups), cur = this.matchName();
+    this.sel.querySelector('span').textContent = cur || 'Custom (unsaved)';
+    this.sel.classList.toggle('custom', !cur);
+    const opt = (n, stock) => {
+      const on = stock ? cur === 'Stock' : n === cur;
+      return `<button type="button" class="tn-opt" role="option" aria-selected="${on}" data-act="pick" data-name="${escapeHTML(n)}"${stock ? ' data-stock="1"' : ''}><span>${escapeHTML(n)}</span>${icon('check')}</button>`;
+    };
+    this.menu.innerHTML = opt('Stock', true) + '<div class="tn-sep"></div>'
+      + (names.length ? names.map(n => opt(n, false)).join('') : '<div class="tn-none">No saved setups yet</div>');
   }
+  setMenu(on) { this.menu.hidden = !on; this.sel.setAttribute('aria-expanded', String(on)); }
   matchName() {
     const cur = JSON.stringify(this.setup);
     if (cur === JSON.stringify(this.T.STOCK)) return 'Stock';
@@ -285,18 +300,6 @@ export class TuningPanel {
     }
   }
 
-  onChange(e) {
-    const t = e.target;
-    if (t === this.sel && t.value) {
-      this.state.setup = this.T.sanitize(this.state.setups[t.value]);
-      this.apply();
-      this.save();
-      this.api.notify('setupLoaded', { name: t.value });
-      t.blur();
-      this.rebuild();
-    }
-  }
-
   rebuild() { const y = this.scroll.scrollTop; this.buildSections(); this.renderSetups(); this.scroll.scrollTop = y; this.refresh(true); }
 
   onClick(e) {
@@ -304,6 +307,18 @@ export class TuningPanel {
     if (!t || !this.el.contains(t)) return;
     const d = t.dataset, s = this.setup;
     if (d.act === 'close') return this.toggle(false);
+    if (d.act === 'setups') return this.setMenu(this.menu.hidden);
+    if (d.act === 'pick') {
+      const stock = !!d.stock;
+      this.setMenu(false);
+      this.state.setup = stock ? clone(this.T.STOCK) : this.T.sanitize(this.state.setups[d.name]);
+      if (stock) this.state.ui.sel = -1;
+      this.apply();
+      this.save();
+      if (stock) this.api.notify('setupStock'); else this.api.notify('setupLoaded', { name: d.name });
+      this.rebuild();
+      return;
+    }
     if (d.act === 'hints') { this.state.ui.hints = !this.state.ui.hints; this.el.classList.toggle('tn-help', this.state.ui.hints); this.save(); return; }
     if (d.act === 'toggle') {
       const sec = t.closest('[data-sec]'), id = sec.dataset.sec;
@@ -433,7 +448,7 @@ export class TuningPanel {
     this.el.hidden = !this.open;
     document.body.classList.toggle('tune-open', this.open);
     if (this.open) { this.renderSetups(); this.refresh(true); }
-    else if (this.el.contains(document.activeElement)) document.activeElement.blur();
+    else { this.setMenu(false); if (this.el.contains(document.activeElement)) document.activeElement.blur(); }
   }
 
   // ------------------------------------------------------------------ readouts
