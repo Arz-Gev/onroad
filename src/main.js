@@ -13,13 +13,16 @@ import { buildUndergrowth } from './world/undergrowth.js';
 import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
-import { makeDefenderParams } from './vehicle/params.js';
+import { buildTrack } from './world/track.js';
+import { makeDefenderParams, makeS15Params } from './vehicle/params.js';
 import { applySetup, rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
 import { Vehicle } from './vehicle/Vehicle.js';
 import { buildTruck } from './vehicle/truckModel.js';
 import { VehicleView } from './vehicle/vehicleView.js';
+import { loadCarModel } from './vehicle/carModel.js';
+import { CarView } from './vehicle/carView.js';
 import { CameraRig, CAM_MODES, CAM_NAMES } from './cameraRig.js';
 import { Input, capsHTML } from './input.js';
 import { HUD, fmtPressure, escapeHTML } from './hud.js';
@@ -83,51 +86,72 @@ async function main() {
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 6000);
   const pipeline = new RenderPipeline(renderer, scene, camera);
 
-  setLoading('Generating terrain…', 0.2); await frame();
+  // ?map=offroad brings back the offroad world; the default is the Ebisu track (AC conversion, world/track.js)
+  const params = new URLSearchParams(location.search);
+  const trackMode = params.get('map') !== 'offroad';
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = H;
-  const terrain = new Terrain(7);
-  terrain.createCollider(RAPIER, world);
   // world visuals that follow the camera or depend on the quality preset (grass, tree LOD, terrain LOD)
   const scenery = { parts: [], configure(q) { for (const p of this.parts) p.configure?.(q); }, update(dt, cam, focus) { for (const p of this.parts) p.update?.(dt, cam, focus); } };
   const env = new Environment(renderer, scene, pipeline);
-  setLoading('Painting the ground…', 0.4); await frame();
-  const terrainView = buildTerrainView(terrain, renderer, { noise: env.sky.noise });
-  scene.add(terrainView.mesh);
-  scenery.parts.push(terrainView);
-  const grass = buildGrass(terrainView);
-  scene.add(grass.group);
-  scenery.parts.push(grass);
-  const water = buildWater(terrain, terrainView, renderer);
-  scene.add(water.group);
-  scenery.parts.push(water);
-
-  setLoading('Placing rocks and trees…', 0.5); await frame();
   const colliderSurface = new Map();
-  const props = buildProps(RAPIER, world, terrain, colliderSurface, makeRockMaterial(terrainView.layers, { vertexColors: true }));
-  scene.add(props);
-  setLoading('Growing the forest…', 0.58); await frame();
-  const trees = buildTrees(RAPIER, world, terrain, colliderSurface, renderer, terrainView, grass.shared.uWind);
-  scene.add(trees.group);
-  scenery.parts.push(trees);
-  const undergrowth = buildUndergrowth(terrainView, trees.atlas, grass.shared.uWind);
-  scene.add(undergrowth.group);
-  scenery.parts.push(undergrowth);
-  trees.updatePhysics(SPAWN.x, SPAWN.z);
+  let terrain, terrainView = null, grass, water = null, props, trees, undergrowth = null, track = null, spawn;
+  if (trackMode) {
+    setLoading('Loading the track…', 0.3); await frame();
+    track = await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer });
+    scene.add(track.group);
+    terrain = track.terrain;
+    spawn = track.spawn;
+    // stand-ins for the offroad systems the frame loop talks to
+    grass = { setPushers() {}, shared: { uWind: { value: 0 } } };
+    trees = { updatePhysics() {}, group: null };
+    props = { userData: { stream: { update() {} } } };
+  } else {
+    setLoading('Generating terrain…', 0.2); await frame();
+    terrain = new Terrain(7);
+    terrain.createCollider(RAPIER, world);
+    spawn = SPAWN;
+    setLoading('Painting the ground…', 0.4); await frame();
+    terrainView = buildTerrainView(terrain, renderer, { noise: env.sky.noise });
+    scene.add(terrainView.mesh);
+    scenery.parts.push(terrainView);
+    grass = buildGrass(terrainView);
+    scene.add(grass.group);
+    scenery.parts.push(grass);
+    water = buildWater(terrain, terrainView, renderer);
+    scene.add(water.group);
+    scenery.parts.push(water);
 
-  setLoading('Building the truck…', 0.68); await frame();
+    setLoading('Placing rocks and trees…', 0.5); await frame();
+    props = buildProps(RAPIER, world, terrain, colliderSurface, makeRockMaterial(terrainView.layers, { vertexColors: true }));
+    scene.add(props);
+    setLoading('Growing the forest…', 0.58); await frame();
+    trees = buildTrees(RAPIER, world, terrain, colliderSurface, renderer, terrainView, grass.shared.uWind);
+    scene.add(trees.group);
+    scenery.parts.push(trees);
+    undergrowth = buildUndergrowth(terrainView, trees.atlas, grass.shared.uWind);
+    scene.add(undergrowth.group);
+    scenery.parts.push(undergrowth);
+    trees.updatePhysics(SPAWN.x, SPAWN.z);
+  }
+
+  setLoading('Building the car…', 0.68); await frame();
   // the player's tuning setup (saved) goes into the params before the truck is built
   const tuningApi = {};
   const tuning = new TuningPanel(tuningApi);
-  const P = applySetup(makeDefenderParams(), tuning.setup);
+  // ?car=defender brings back the truck; the S15 skips the tuning setup (tuning.js only knows the Defender)
+  const carId = params.get('car') === 'defender' ? 'defender' : 's15';
+  const P = carId === 'defender' ? applySetup(makeDefenderParams(), tuning.setup) : makeS15Params();
   const surfaceAt = (col, p) => (col && colliderSurface.get(col.handle)) || terrain.surfaceAt(p.x, p.z);
-  const spawnY = terrain.heightAt(SPAWN.x, SPAWN.z) + 0.12 + rideRaise(P);
-  const vehicle = new Vehicle(RAPIER, world, P, { position: { x: SPAWN.x, y: spawnY, z: SPAWN.z }, yaw: SPAWN.yaw, surfaceAt });
-  vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
+  const spawnY = terrain.heightAt(spawn.x, spawn.z) + 0.12 + rideRaise(P);
+  const vehicle = new Vehicle(RAPIER, world, P, { position: { x: spawn.x, y: spawnY, z: spawn.z }, yaw: spawn.yaw, surfaceAt });
+  if (P.tunable !== false) vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
   world.step();
-  const model = buildTruck(makeDefenderParams());   // modelled stock; the view scales the wheels and follows the lift
+  const model = carId === 'defender'
+    ? buildTruck(makeDefenderParams())   // modelled stock; the view scales the wheels and follows the lift
+    : await loadCarModel(`${import.meta.env.BASE_URL}models/s15.glb`);
   scene.add(model.root);
-  const view = new VehicleView(model, vehicle);
+  const view = carId === 'defender' ? new VehicleView(model, vehicle) : new CarView(model, vehicle);
   const colliderView = new ColliderView(scene, model, vehicle);
   const d = vehicle.drivetrain;
 
@@ -139,7 +163,7 @@ async function main() {
   const settings = new Settings();
   const dust = new Dust(scene);
   dust.waterAt = (x, z) => terrain.waterLevelAt(x, z);
-  const tracks = new Tracks(terrainView.material);
+  const tracks = terrainView ? new Tracks(terrainView.material) : { stamp() {} };   // tyre marks: offroad terrain only for now
 
 
   // interpolated body pose
@@ -159,7 +183,7 @@ async function main() {
     return { x: p.x, z: p.z, yaw: Math.atan2(-(q.x - p.x), -(q.z - p.z)) };
   }
   // teleport targets, shown in the menu's Locations tab (x, z, yaw are also used by tools/browser-snippets.js)
-  const teleports = [
+  const teleports = track ? track.teleports : [
     { name: 'Spawn', tag: 'Trail', title: 'Spawn', desc: 'Start of the trail loop: ruts, a mud hole and a branch towards the hills.', x: SPAWN.x, z: SPAWN.z, yaw: 0 },
     { name: 'Axle twister', tag: 'Proving ground · lane A', title: 'Axle twister and whoops', desc: 'Offset humps that lift one wheel at a time. Watch the axle articulation.', x: LANES.A, z: 47, yaw: 0 },
     { name: 'Steps and logs', tag: 'Proving ground · lane B', title: 'Steps and logs', desc: 'Ledges from 15 to 45 cm, then logs. Low range and a slow approach.', x: LANES.B, z: 47, yaw: 0 },
@@ -324,7 +348,7 @@ async function main() {
     range: () => d.toggleRange(vehicle.speed),
     centreLock: () => d.toggleCenterLock(),
     lockers: () => d.cycleAxleLockers(),
-    traction: () => { vehicle.tc = !vehicle.tc; say('tc', vehicle.tc ? 'Traction control on' : 'Traction control off: open diffs spin the lightest wheel'); },
+    traction: () => { vehicle.tc = !vehicle.tc; say('tc', vehicle.tc ? 'Traction control on' : 'Traction control off'); },
     abs: () => { vehicle.abs = !vehicle.abs; say('abs', vehicle.abs ? 'ABS on' : 'ABS off: hard braking locks the wheels'); },
     rwd: () => d.toggleRwd(vehicle.speed),
     engineStart: () => d.startEngine(),
@@ -483,7 +507,7 @@ async function main() {
       if (steps === MAX_STEPS) acc = 0;
       game.stepsPerFrame = steps;
       // fell off the world
-      if (curPos.y < -60) { placeVehicle(SPAWN.x, SPAWN.z, 0); say('place', 'Fell off the map: back at the spawn', 'warn'); }
+      if (curPos.y < -60) { placeVehicle(spawn.x, spawn.z, spawn.yaw || 0); say('place', 'Fell off the map: back at the spawn', 'warn'); }
     }
     mark('physics');
     // paused: render only when something changed (setting, resize, time-of-day blend), the menu covers the view
@@ -566,7 +590,7 @@ async function main() {
   started = true;
 
   if (!settings.introSeen) menu.openIntro();
-  else say('welcome', `Defender 110 V8 · ${d.mode === 'auto' ? 'automatic' : 'manual'} · ${k('menu')} menu · ${k('controls')} controls`, '', 5);
+  else say('welcome', `${P.name} · ${d.mode === 'auto' ? 'automatic' : 'manual'} · ${k('menu')} menu · ${k('controls')} controls`, '', 5);
 
   let last = performance.now();
   function loop(now) {

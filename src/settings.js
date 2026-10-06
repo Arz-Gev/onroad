@@ -5,7 +5,7 @@ const KEY = 'offroad.settings.v1';
 const INTRO_KEY = 'offroad.introSeen.v1';
 
 export const DEFAULTS = {
-  gearbox: 'auto',          // 'auto' | 'manual'
+  gearbox: 'manual',        // 'auto' | 'manual'
   autoClutch: true,
   arcadeAuto: false,        // automatic gearbox: hold S at a stop to reverse (off: select R like a real car)
   handbrake: 'hold',        // 'hold' (while pressed) | 'toggle' | 'auto' (tap toggles, long press holds)

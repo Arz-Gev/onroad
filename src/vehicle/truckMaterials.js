@@ -22,7 +22,7 @@ export const shared = {
 };
 
 // opts: dirt (0..1 how much this material collects dirt), env (use uEnvSpec), ao (cabin occlusion), grain
-function patch(mat, opts) {
+export function patch(mat, opts) {
   const { dirt = 0, env = 0, ao = false, glass = false, grain = 0, dirtTint = [0.13, 0.095, 0.065] } = opts;
   const key = `tk-${dirt}-${env}-${ao}-${glass}-${grain}`;
   mat.customProgramCacheKey = () => key;

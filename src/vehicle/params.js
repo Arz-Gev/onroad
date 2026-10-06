@@ -113,3 +113,86 @@ export function makeDefenderParams() {
     ],
   };
 }
+
+// Silvia S15 (model: public/models/s15.glb). Numbers from the Assetto Corsa S14/180SX drift setups in
+// "cars and tracks" (SR20DET torque curve and turbo, 5-speed gearing, 2.525 m wheelbase, 52 % front, 1300 kg).
+// Rear-wheel drive with a welded diff (the AC setups run POWER = COAST = 1.0); the lockers key switches
+// to a 1.5-way LSD or an open diff. Suspension is still the Defender's solid axles (PLAN.md step 1).
+export function makeS15Params() {
+  const P = makeDefenderParams();
+  const wheelbase = 2.525;
+  const track = 1.56;
+  // the AC curve is the engine's net torque without boost; AC multiplies it by (1 + boost). The S14 mod runs
+  // 2.0 bar (a ~650 hp VDC car); this is a built street SR20: 0.75 bar, full boost from 3800 rpm (AC
+  // REFERENCE_RPM 3800, GAMMA 2.75) -> ~470 Nm, ~400 hp. The drivetrain subtracts friction and pumping.
+  const friction = rpm => 12 + 0.0085 * rpm + 1.2e-6 * rpm * rpm;
+  const boost = rpm => 0.75 * Math.min(1, Math.pow(rpm / 3800, 2.75));
+  const sr20 = [[0, 0], [500, 176], [1000, 182], [1500, 198], [2000, 208], [2500, 217], [3000, 222], [3500, 247],
+    [4000, 255], [4500, 261], [5000, 266], [5500, 267], [6000, 261], [6500, 254], [7000, 239], [7500, 228],
+    [8000, 214], [8500, 190], [9000, 60]];
+  return {
+    ...P,
+    name: 'Silvia S15',
+    model: 's15',
+    tunable: false,              // tuning.js / the tuning panel only know the Defender for now
+    layout: 'rwd',
+    rearDiff: 'welded',
+    lsd: { preload: 80, power: 0.6, coast: 0.35 },
+    bodyMass: 1120,
+    // box inertia (AC car.ini INERTIA 1.72 x 1.195 x 4.72 m) for the sprung mass: pitch, yaw, roll
+    bodyInertia: [2210, 2360, 410],
+    com: [0, 0.45, -0.05],       // 52 % front
+    aero: { cdA: 0.62, rho: 1.2 },
+    wheelbase,
+    track,
+    axles: [
+      {
+        name: 'front', z: -wheelbase / 2, droopY: 0.29, travel: 0.11,
+        mass: 90, rollInertia: 40,
+        springTrack: 1.42, k: 70000, preload: 0.0,
+        damperTrack: 1.42, bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
+        arb: 9000,
+        steered: true,
+      },
+      {
+        name: 'rear', z: wheelbase / 2, droopY: 0.277, travel: 0.11,
+        mass: 90, rollInertia: 40,
+        springTrack: 1.38, k: 45000, preload: 0.0,
+        damperTrack: 1.38, bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
+        arb: 3000,
+        rollSteer: 0,
+        steered: false,
+      },
+    ],
+    tire: {
+      ...P.tire,
+      radius: 0.33,              // 265/35R18 (the model's tyres)
+      width: 0.245,
+      rimRadius: 0.241,
+      inertia: 1.8,
+      pressure: 30, minPressure: 15, maxPressure: 45,
+      damping: 400,
+      relaxX: 0.15, relaxY: 0.4,
+    },
+    // quick rack: a slide is caught with the wheel, ~3.5 rad/s at the road wheels (lock to lock in ~0.4 s)
+    steer: { maxAngle: 0.75, kingpinTrack: 1.45, ratio: 13, rate: 3.5, ackermann: 0.2, casterTrail: 0.025, pneuTrail: 0.03, stiffness: 40000 },
+    brakes: { front: 1500, rear: 850, handbrake: 2500, handbrakeHold: 8000 },
+    engine: {
+      ...P.engine,
+      name: 'SR20DET',
+      idleRpm: 950, limiterRpm: 8200, redlineRpm: 7800, stallRpm: 300, shiftRpm: 7500,
+      inertia: 0.16,
+      torque: sr20.map(([r, t]) => [r, r === 0 ? 0 : Math.round(t * (1 + boost(r)) + friction(r))]),
+    },
+    clutch: { capacity: 800, inputInertia: 0.02 },
+    manual: { ratios: [2.833, 1.764, 1.289, 1.0, 0.833], reverse: 3.818 },
+    transfer: { high: 1.0, low: 1.0 },
+    finalDrive: 3.91,
+    // chassis boxes fitted to the model: lower body, cabin, rear wing
+    colliders: [
+      [0, 0.45, 0.025, 0.94, 0.31, 2.2, 0.08],
+      [0, 0.98, 0.2, 0.7, 0.2, 0.95, 0.08],
+      [0, 1.03, 2.36, 0.8, 0.07, 0.11, 0.02],
+    ],
+  };
+}

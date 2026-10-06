@@ -54,6 +54,7 @@ export class TuningPanel {
   // apply the current setup to the physics. colliders: rebuild the chassis boxes too.
   apply({ snap = false, colliders = true } = {}) {
     const v = this.v, s = this.setup;
+    if (v.P.tunable === false) { this.api.toast?.(`Tuning isn't ready for the ${v.P.name} yet`, 'warn', 'tune'); return; }
     applySetup(v.P, s);
     v.pressures = [s.tyres.pressF, s.tyres.pressR];
     v.retune({ snap, colliders });

@@ -48,6 +48,11 @@ export class Drivetrain {
     this.frontLock = false;
     this.rearLock = false;
     this.rwd = false;               // front prop shaft disconnected: rear-wheel drive only (high range)
+    // P.layout 'rwd': a road car. No transfer case or front drive; the rear diff is P.rearDiff
+    // ('welded' | 'lsd' | 'open', the lockers key cycles it), the handbrake works on each rear wheel
+    this.fixedRwd = P.layout === 'rwd';
+    this.rearDiff = 'open';
+    if (this.fixedRwd) { this.rwd = true; this.rearDiff = P.rearDiff || 'welded'; this.rearLock = this.rearDiff === 'welded'; }
 
     this.w = new Float64Array(6);
     this.inv = new Float64Array(6);
@@ -83,7 +88,7 @@ export class Drivetrain {
 
     this.rows = {
       gear: new Row(), clutch: new Row(), center: new Row(), front: new Row(), rear: new Row(), park: new Row(),
-      hb: new Row(), hold: new Row(), efric: new Row(), ifric: new Row(),
+      hb: new Row(), hbL: new Row(), hbR: new Row(), lsd: new Row(), hold: new Row(), efric: new Row(), ifric: new Row(),
       b0: new Row(), b1: new Row(), b2: new Row(), b3: new Row(),
       r0: new Row(), r1: new Row(), r2: new Row(), r3: new Row(),
     };
@@ -145,16 +150,19 @@ export class Drivetrain {
     this.say(this.clutchAssist ? 'Auto clutch ON' : 'Auto clutch OFF: hold Shift for the clutch');
   }
   toggleRange(speed) {
+    if (this.fixedRwd) { this.say('No transfer case on this car'); return; }
     if (Math.abs(speed) > 1.5) { this.say('Stop to change transfer range'); return; }
     if (this.rwd && this.range === 'high') { this.say('Select 4WD before LOW range'); return; }
     this.range = this.range === 'high' ? 'low' : 'high';
     this.say(this.range === 'low' ? 'LOW range engaged' : 'HIGH range engaged');
   }
   toggleCenterLock() {
+    if (this.fixedRwd) { this.say('Rear-wheel drive: no centre diff'); return; }
     if (this.rwd) { this.say('Centre lock needs 4WD'); return; }
     this.centerLock = !this.centerLock; this.say(this.centerLock ? 'Centre diff LOCKED' : 'Centre diff open');
   }
   toggleRwd(speed) {
+    if (this.fixedRwd) { this.say('Rear-wheel drive only'); return; }
     if (!this.rwd && this.range === 'low') { this.say('RWD only in HIGH range'); return; }
     if (Math.abs(speed) > 8) { this.say('Slow down to change 2WD / 4WD'); return; }
     this.rwd = !this.rwd;
@@ -162,6 +170,12 @@ export class Drivetrain {
     this.say(this.rwd ? '2WD: rear-wheel drive' : '4WD: all wheels driven');
   }
   cycleAxleLockers() {
+    if (this.fixedRwd) {
+      this.rearDiff = { welded: 'lsd', lsd: 'open', open: 'welded' }[this.rearDiff];
+      this.rearLock = this.rearDiff === 'welded';
+      this.say({ welded: 'Rear diff: welded', lsd: 'Rear diff: LSD (1.5-way)', open: 'Rear diff: open' }[this.rearDiff]);
+      return;
+    }
     if (!this.rearLock) { this.rearLock = true; this.say('Rear locker ON'); }
     else if (!this.frontLock) { this.frontLock = true; this.say('Front + rear lockers ON'); }
     else { this.rearLock = false; this.frontLock = false; this.say('Axle lockers off'); }
@@ -299,6 +313,7 @@ export class Drivetrain {
     if (this.manualGear === 0) return 0;
     if (this.cranking) return 1;
     if (!this.running) return 0;           // parked in gear: engine compression holds the truck
+    if (ctl.handbrake > 0.5 && this.fixedRwd) return 0.8;   // handbrake turn: clutch in, the engine keeps revving
     const rpm = this.rpm;
     const lineRpm = Math.abs(this.ratioFor('manual', this.manualGear) * this.wheelMean()) * RPM;
     let e;
@@ -399,7 +414,18 @@ export class Drivetrain {
     if (this.centerLock) A.push(R.center.set(0, 0, 0.5, 0.5, -0.5, -0.5).bound(Infinity));
     if (this.frontLock) A.push(R.front.set(0, 0, 1, -1, 0, 0).bound(Infinity));
     if (this.rearLock) A.push(R.rear.set(0, 0, 0, 0, 1, -1).bound(Infinity));
-    if (hbT > 0) A.push(R.hb.set(0, 0, 0, 0, 0.5, 0.5).bound(hbT * h)); else R.hb.lambda = 0;
+    // clutch-type LSD: locking torque = preload + ramp x the torque through it (more on power than on coast)
+    if (this.rearDiff === 'lsd') {
+      const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 };
+      const Tin = this.propTorque[1] * P.finalDrive;
+      A.push(R.lsd.set(0, 0, 0, 0, 1, -1).bound((L.preload + Math.abs(Tin) * (Tin >= 0 ? L.power : L.coast)) * h));
+    } else R.lsd.lambda = 0;
+    if (this.fixedRwd) {
+      // per wheel: pulling it locks both rear wheels whatever the diff does
+      R.hb.lambda = 0;
+      if (hbT > 0) { A.push(R.hbL.set(0, 0, 0, 0, 1, 0).bound(hbT * h)); A.push(R.hbR.set(0, 0, 0, 0, 0, 1).bound(hbT * h)); }
+      else { R.hbL.lambda = 0; R.hbR.lambda = 0; }
+    } else if (hbT > 0) A.push(R.hb.set(0, 0, 0, 0, 0.5, 0.5).bound(hbT * h)); else R.hb.lambda = 0;
     if (holdT > 0) A.push((this.rwd ? R.hold.set(0, 0, 0, 0, 0.5, 0.5) : R.hold.set(0, 0, 0.25, 0.25, 0.25, 0.25)).bound(holdT * h)); else R.hold.lambda = 0;
     const bRows = [R.b0, R.b1, R.b2, R.b3], rRows = [R.r0, R.r1, R.r2, R.r3];
     for (let i = 0; i < 4; i++) {
@@ -421,12 +447,14 @@ export class Drivetrain {
     this.engineAlpha = (w[0] - w0Old) / h;
     const lg = G !== 0 ? R.gear.lambda : 0;
     const lc = this.centerLock ? R.center.lambda : 0;
-    const lh = hbT > 0 ? R.hb.lambda : 0;
+    const lh = hbT > 0 && !this.fixedRwd ? R.hb.lambda : 0;
+    const lhl = hbT > 0 && this.fixedRwd ? R.hbL.lambda : 0, lhr = hbT > 0 && this.fixedRwd ? R.hbR.lambda : 0;
     const lo = holdT > 0 ? R.hold.lambda : 0;
     const gj = R.gear.j, cj = R.center.j, hj = R.hb.j, oj = R.hold.j;
     for (let i = 0; i < 4; i++) {
       const b = 2 + i;
-      this.wheelDrive[i] = ((G !== 0 ? gj[b] * lg : 0) + (this.centerLock ? cj[b] * lc : 0) + (hbT > 0 ? hj[b] * lh : 0) + (holdT > 0 ? oj[b] * lo : 0)) / h;
+      this.wheelDrive[i] = ((G !== 0 ? gj[b] * lg : 0) + (this.centerLock ? cj[b] * lc : 0) + (lh ? hj[b] * lh : 0) + (holdT > 0 ? oj[b] * lo : 0)
+        + (i === 2 ? lhl : i === 3 ? lhr : 0)) / h;
     }
     const fd = P.finalDrive;
     this.propTorque[0] = (this.wheelDrive[0] + this.wheelDrive[1]) / fd;

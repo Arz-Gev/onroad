@@ -13,6 +13,10 @@ export const SURFACES = {
   sand:     { name: 'Sand',     mu: 0.62, crr: 0.085, kPeak: 0.24, aPeak: 0.20, C: 1.15, soft: 1.0, dust: 1.2, color: [0.75, 0.66, 0.48] },
   wood:     { name: 'Wood',     mu: 0.68, crr: 0.012, kPeak: 0.10, aPeak: 0.13, C: 1.50, soft: 0.0, dust: 0.0, color: [0.4, 0.3, 0.2] },
   concrete: { name: 'Concrete', mu: 0.98, crr: 0.011, kPeak: 0.10, aPeak: 0.12, C: 1.60, soft: 0.0, dust: 0.2, color: [0.6, 0.6, 0.58] },
+  // track surfaces (AC tracks, world/track.js). Asphalt: the slip peak comes early and the force falls off
+  // past it to ~75 % in a full slide (C 1.45), so a slide holds at a little less than peak grip
+  asphalt:  { name: 'Asphalt',  mu: 1.05, crr: 0.011, kPeak: 0.10, aPeak: 0.105, C: 1.45, soft: 0.0, dust: 0.0, color: [0.2, 0.2, 0.21] },
+  kerb:     { name: 'Kerb',     mu: 0.94, crr: 0.013, kPeak: 0.10, aPeak: 0.11, C: 1.45, soft: 0.0, dust: 0.0, color: [0.7, 0.2, 0.2] },
 };
 for (const s of Object.values(SURFACES)) s.B = Math.tan(Math.PI / (2 * s.C)); // peak of sin(C atan(B s)) at s = 1
 
