@@ -41,11 +41,17 @@ function addDetail(m, dir, aniso) {
   m.customProgramCacheKey = () => 'track-detail';
 }
 
-export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer }) {
+export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer, trees = false }) {
   const gltf = await loader.loadAsync(url);
   const root = gltf.scene;
   const info = root.userData || {};
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  // the track's tree cards (TREE.* materials, visual only, no colliders) are dropped unless asked for
+  if (!trees) {
+    const drop = [];
+    root.traverse(o => { if (o.isMesh && /^TREE/.test(o.material.name)) drop.push(o); });
+    for (const o of drop) { o.removeFromParent(); o.geometry.dispose(); }
+  }
   root.updateMatrixWorld(true);
   const dir = url.replace(/\.glb$/, '/');
 
