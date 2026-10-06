@@ -1,0 +1,54 @@
+// Every line the HUD's ticker can show, in one place. See docs/UI.md ("Notifications").
+//
+// Code never builds notification text inline: it calls hud.notify(id, params) and the text lives here.
+// Each entry: { level, text(p, k) }
+//   level: 'info' (white) | 'warn' (the hot accent) | 'hint' (a standing tip, shown while its condition holds)
+//   text:  returns HTML. p = params, k(id) = key caps for a binding on the current device.
+// Rules: one line, sentence case, no trailing full stop, at most ~48 characters plus key caps.
+// State the cluster already shows (gear, gearbox mode, lights, TC, ABS, diffs, tyres, engine, sound)
+// is never a notification: the cluster field flashes instead.
+
+export const MESSAGES = {
+  // ---- drivetrain refusals and events (vehicle/drivetrain.js say(id))
+  grind: { level: 'warn', text: (p, k) => `Grind · clutch ${k('clutch')} or match the revs` },
+  reverseTooFast: { level: 'warn', text: () => 'Too fast for reverse' },
+  engineRunning: { level: 'info', text: (p, k) => `Engine already running · ${k('engineStop')} stops it` },
+  engineInGear: { level: 'warn', text: (p, k) => `In gear · hold ${k('clutch')} or select neutral` },
+  engineNoStart: { level: 'warn', text: () => 'Did not start · select neutral or press the clutch' },
+  engineStalled: { level: 'warn', text: (p, k) => `Stalled · ${k('engineStart')} to restart` },
+  engineAlreadyOff: { level: 'info', text: (p, k) => `Engine already off · ${k('engineStart')} starts it` },
+  rangeStop: { level: 'warn', text: () => 'Stop to change the transfer range' },
+  rangeNeeds4wd: { level: 'warn', text: (p, k) => `Low range needs 4WD · ${k('rwd')}` },
+  rwdNeedsHigh: { level: 'warn', text: () => '2WD works in high range only' },
+  rwdSlowDown: { level: 'warn', text: () => 'Slow down below 30 km/h to change 2WD / 4WD' },
+  centreNeeds4wd: { level: 'warn', text: (p, k) => `Centre lock needs 4WD · ${k('rwd')}` },
+  noFeature: { level: 'info', text: p => `${p.what} not fitted to this car` },
+
+  // ---- driver actions with an outcome the cluster can't show
+  tyresLimit: { level: 'warn', text: p => `Tyres at the ${p.min ? 'minimum' : 'maximum'} · ${p.value}` },
+  recovered: { level: 'info', text: () => 'Recovered' },
+  place: { level: 'info', text: p => p.name },
+  fellOff: { level: 'warn', text: () => 'Fell off the map · back at the start' },
+  camera: { level: 'info', text: p => p.name },
+  time: { level: 'info', text: p => p.name },
+  setting: { level: 'info', text: p => p.text },
+
+  // ---- devices and sound
+  padOn: { level: 'info', text: () => 'Controller connected' },
+  padOff: { level: 'warn', text: () => 'Controller disconnected' },
+  soundLocked: { level: 'hint', text: () => 'Click or press a key to turn on sound' },
+  soundError: { level: 'warn', text: () => 'Sound unavailable in this browser' },
+
+  // ---- tuning panel
+  setupLoaded: { level: 'info', text: p => `Setup loaded · ${p.name}` },
+  setupSaved: { level: 'info', text: p => `Setup saved · ${p.name}` },
+  setupImported: { level: 'info', text: () => 'Setup imported' },
+  setupStock: { level: 'info', text: () => 'Back to the stock setup' },
+  launch: { level: 'info', text: p => `0–100 km/h in ${p.t} s` },
+
+  // ---- standing tips (hud.js tips(): shown while the condition holds)
+  tipRolled: { level: 'hint', text: (p, k) => `Upside down · ${k('recover')} to recover` },
+  tipEngine: { level: 'hint', text: (p, k) => `Engine ${p.stalled ? 'stalled' : 'off'} · ${k('engineStart')} to start` },
+  tipNeutral: { level: 'hint', text: (p, k) => p.manual ? `Neutral · ${k('shiftUp')} for 1st, ${k('shiftDown')} for reverse` : `Selector in ${p.sel} · ${k('shiftUp')} for drive` },
+  tipStuck: { level: 'hint', text: (p, k) => p.offroad ? `Stuck? Low range ${k('range')}, lockers ${k('lockers')}, or ${k('recover')}` : `Stuck? ${k('recover')} to recover` },
+};

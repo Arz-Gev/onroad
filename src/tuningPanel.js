@@ -29,7 +29,7 @@ const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['
 const sl = (path, label, range, fmt, hint, extra = {}) => ({ type: 'slider', path, label, range, fmt, hint, ...extra });
 
 export class TuningPanel {
-  // api: { vehicle, settings, colliderView, action(id), toast(html, kind, key), redraw() }
+  // api: { vehicle, settings, colliderView, action(id), notify(id, params), redraw() }
   constructor(api, car = 's15') {
     this.api = api;
     this.T = carTuning(car);
@@ -291,7 +291,7 @@ export class TuningPanel {
       this.state.setup = this.T.sanitize(this.state.setups[t.value]);
       this.apply();
       this.save();
-      this.api.toast(`Setup loaded: ${escapeHTML(t.value)}`, 'good', 'tune');
+      this.api.notify('setupLoaded', { name: t.value });
       t.blur();
       this.rebuild();
     }
@@ -321,7 +321,7 @@ export class TuningPanel {
       this.rebuild();
       return;
     }
-    if (d.act === 'stock') { this.state.setup = clone(this.T.STOCK); this.state.ui.sel = -1; this.changed('*'); this.rebuild(); this.api.toast(`Stock ${this.T.ui.noun}`, 'good', 'tune'); return; }
+    if (d.act === 'stock') { this.state.setup = clone(this.T.STOCK); this.state.ui.sel = -1; this.changed('*'); this.rebuild(); this.api.notify('setupStock'); return; }
     if (d.act === 'saveas') return this.showSave();
     if (d.act === 'export') return this.showExport();
     if (d.act === 'import') return this.showImport();
@@ -331,7 +331,7 @@ export class TuningPanel {
       if (!name) return;
       this.state.setups[name] = clone(s);
       this.save(); this.renderSetups(); this.io.hidden = true;
-      this.api.toast(`Saved: ${escapeHTML(name)}`, 'good', 'tune');
+      this.api.notify('setupSaved', { name });
       return;
     }
     if (d.act === 'iodel') {
@@ -350,7 +350,7 @@ export class TuningPanel {
         const obj = JSON.parse(this.io.querySelector('textarea').value);
         this.state.setup = this.T.sanitize(obj);
         this.changed('*'); this.io.hidden = true; this.rebuild();
-        this.api.toast('Setup imported', 'good', 'tune');
+        this.api.notify('setupImported');
       } catch (err) { this.io.querySelector('.tn-err').textContent = 'Not valid JSON: ' + err.message; }
       return;
     }
@@ -586,10 +586,10 @@ export class TuningPanel {
     g.strokeStyle = 'rgba(255,255,255,0.08)'; g.lineWidth = 1; g.font = '500 18px "Geist Mono", ui-monospace, Menlo, monospace'; g.fillStyle = 'rgba(237,237,237,0.4)';
     for (let r = 1000; r < maxR; r += 1000) { g.beginPath(); g.moveTo(X(r), 10); g.lineTo(X(r), H - 24); g.stroke(); g.fillText(r / 1000 + 'k', X(r) - 10, H - 4); }
     const line = (pts, Y, col, dash) => { g.setLineDash(dash || []); g.strokeStyle = col; g.lineWidth = dash ? 2 : 3.5; g.beginPath(); pts.forEach(([r, n], i) => (i ? g.lineTo(X(r), Y(n)) : g.moveTo(X(r), Y(n)))); g.stroke(); g.setLineDash([]); };
-    line(s0.t, Yt, 'rgba(237,237,237,0.35)', [8, 6]); line(s0.w, Yw, 'rgba(82,168,255,0.45)', [8, 6]);
-    line(c.t, Yt, '#ededed'); line(c.w, Yw, '#52a8ff');
+    line(s0.t, Yt, 'rgba(237,237,237,0.35)', [8, 6]); line(s0.w, Yw, 'rgba(255,92,53,0.45)', [8, 6]);
+    line(c.t, Yt, '#ededed'); line(c.w, Yw, '#ff5c35');
     g.fillStyle = '#ededed'; g.fillText(`${Math.round(maxT / 1.1)} Nm`, 4, 22);
-    g.fillStyle = '#52a8ff'; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
+    g.fillStyle = '#ff5c35'; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
   }
 
   // ------------------------------------------------------------------ 0-100 measurement
@@ -633,7 +633,7 @@ export class TuningPanel {
     for (const k of [50, 100]) { g.beginPath(); g.moveTo(pad, Y(k)); g.lineTo(W - 10, Y(k)); g.stroke(); g.fillText(String(k), 2, Y(k) + 6); }
     const step = maxT > 30 ? 10 : 5;
     for (let t = step; t < maxT; t += step) { g.fillText(t + 's', X(t) - 12, H - 4); }
-    const cols = ['#ededed', '#52a8ff', '#45d483', '#ff8fa3', '#c9a7ff', '#f5a524'];
+    const cols = ['#ededed', '#ff5c35', 'rgba(237,237,237,0.6)', 'rgba(255,92,53,0.6)', 'rgba(237,237,237,0.35)', 'rgba(255,92,53,0.35)'];
     this.runs.slice().reverse().forEach((r, k, arr) => {
       const i = arr.length - 1 - k;
       g.strokeStyle = cols[i]; g.lineWidth = i === 0 ? 4 : 2; g.globalAlpha = i === 0 ? 1 : 0.7;
@@ -661,7 +661,7 @@ export class TuningPanel {
         if (kmh >= 100) {
           const gb = this.api.settings.get('gearbox');
           this.lastLaunch = { t100: this.launch.t, label: `${this.T.ENGINES[this.setup.engine.preset].label} · ${this.setup.tyres.size}″ · ${gb === 'manual' ? 'manual' : 'auto'}` };
-          if (this.open) this.api.toast(`0–100 km/h in ${f1(this.launch.t)} s`, 'good', 'launch');
+          if (this.open) this.api.notify('launch', { t: f1(this.launch.t) });
           this.launch = null;
         } else if (this.launch.t > 60) this.launch = null;
       }

@@ -12,6 +12,7 @@ const reversingNow = d => (d.mode === 'manual' ? d.manualGear < 0 : d.selector =
 export class CarView extends VehicleView {
   constructor(model, vehicle) {
     super(model, vehicle);
+    this.features = {};      // no light bar on a road car
     // lateral offset of each model wheel from the physics hub (model track vs P.track)
     this.dx = model.wheels.map((w, i) => w.rest.x - vehicle.wheels[i].side * this.P.track / 2);
   }
