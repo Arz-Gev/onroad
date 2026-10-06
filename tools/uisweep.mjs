@@ -43,13 +43,13 @@ await p.keyboard.press('Escape');
 await p.waitForSelector('#menu:not([hidden])', { timeout: 20000 });
 const head = () => p.evaluate(() => [...document.querySelectorAll('.sheet-head > *')].map(e => { const r = e.getBoundingClientRect(); return [r.x, r.width].map(Math.round).join(','); }).join(' | '));
 let h0 = null;
-for (const t of ['locations', 'settings', 'graphics', 'controls']) {
+for (const t of ['locations', 'settings', 'graphics', 'interface', 'controls']) {
   await p.click(`.tab[data-tab=${t}]`);
   await p.waitForTimeout(150);
   const h = await head();
   if (h0 && h !== h0) moved.push(`menu header changed on ${t}: ${h0} -> ${h}`);
   h0 = h;
-  if (t === 'settings' || t === 'graphics') moved.push(...(await sweep('#menu .pane:not([hidden])', '.seg button, .switch', ['[data-key=fullscreen] .switch', '[data-key=sound] .switch'])).map(x => `${t} ${x}`));
+  if (t === 'settings' || t === 'graphics' || t === 'interface') moved.push(...(await sweep('#menu .pane:not([hidden])', '.seg button, .set-pal button, .switch', ['[data-key=fullscreen] .switch', '[data-key=sound] .switch'])).map(x => `${t} ${x}`));
 }
 await p.click('[data-act=resume]');
 await p.keyboard.press('Tab');

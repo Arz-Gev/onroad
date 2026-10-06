@@ -5,8 +5,9 @@
 
 :root {
   /* One look for every surface (docs/UI.md): near-black glass, hairline borders, white text.
-     Two accents only: --accent (white: on, selected, primary) and --hot (warning, active intervention,
-     redline, modified). Nothing else gets a colour. */
+     Three colour roles, no others: --accent (main: on, selected, primary), --cool (active and changed:
+     TC / ABS working, handbrake, locked diffs, slip, values changed from stock, focus) and --hot
+     (warnings only). theme.js overwrites them from the Interface tab (palettes or custom colours). */
   --panel: rgba(0, 0, 0, 0.5);
   --panel-hi: rgba(10, 10, 10, 0.78);
   --sheet: rgba(0, 0, 0, 0.72);
@@ -19,6 +20,9 @@
   --ghost: rgba(237, 237, 237, 0.16);
   --accent: #ededed;
   --accent-ink: #0a0a0a;
+  --cool: #4cc2ff;
+  --cool-ink: #0a0a0a;
+  --cool-soft: rgba(76, 194, 255, 0.16);
   --hot: #ff5c35;
   --hot-soft: rgba(255, 92, 53, 0.16);
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -97,33 +101,40 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .panel-f span::before { content: ''; width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 2px; background: rgba(255, 255, 255, 0.85); }
 .panel-f span:nth-child(2)::before { background: rgba(255, 255, 255, 0.45); }
 .panel-f .lg-travel::before { background: rgba(255, 255, 255, 0.7); }
-.panel-f .lg-slip::before { background: linear-gradient(90deg, rgba(255, 255, 255, 0.45), #fff, var(--hot)); width: calc(14 * var(--u)); }
+.panel-f .lg-slip::before { background: linear-gradient(90deg, rgba(255, 255, 255, 0.45), var(--accent), var(--cool)); width: calc(14 * var(--u)); }
 
 /* ---- the dash: ticker line over the instrument cluster (bottom right) */
 .dash {
   position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom));
   width: calc(300 * var(--u));
 }
-/* the ticker sits above the cluster and takes no space: empty, nothing is drawn */
-.ticker { position: absolute; left: 0; right: 0; bottom: calc(100% + 8 * var(--u)); height: calc(32 * var(--u)); }
+/* The ticker: a stack of soft lines above the cluster. It takes no space and draws nothing when empty.
+   A line has no border and no marker: a dark glass band whose edges feather out (mask), with the text
+   centred. Newest at the bottom (--k 0); older lines step up and dim. Positions are transforms only. */
+.ticker { position: absolute; left: 0; right: 0; bottom: calc(100% + 6 * var(--u)); height: 0; }
 .tk {
-  position: absolute; inset: 0; box-sizing: border-box;
-  display: flex; align-items: center; gap: calc(9 * var(--u)); padding: 0 calc(12 * var(--u));
-  border: 1px solid var(--line); border-radius: calc(9 * var(--u));
-  background: var(--panel); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-  font: 500 calc(12.5 * var(--u))/1 var(--sans); color: var(--txt); white-space: nowrap; overflow: hidden;
-  animation: tk-in 0.28s cubic-bezier(.2, .8, .2, 1);
+  --step: calc(34 * var(--u));
+  position: absolute; left: 0; right: 0; bottom: 0; height: calc(30 * var(--u));
+  display: flex; align-items: center; justify-content: center; padding: 0 calc(28 * var(--u));
+  background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  /* soft edges all round: a horizontal and a vertical fade, intersected */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent), linear-gradient(transparent, #000 30%, #000 70%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent), linear-gradient(transparent, #000 30%, #000 70%, transparent);
+  mask-composite: intersect;
+  font: 500 calc(12.5 * var(--u))/1 var(--sans); color: var(--txt); white-space: nowrap;
+  transform: translateY(calc(var(--k, 0) * var(--step) * -1));
+  transition: transform 0.32s cubic-bezier(.2, .8, .2, 1), opacity 0.32s ease;
 }
-.tk.out { animation: tk-out 0.3s cubic-bezier(.4, 0, .6, 1) forwards; }
-.tk-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 0.3em; }
-.tk-d { flex: none; width: calc(6 * var(--u)); height: calc(6 * var(--u)); border-radius: 50%; background: var(--accent); }
-.tk-warn { border-color: rgba(255, 92, 53, 0.45); }
-.tk-warn .tk-d { background: var(--hot); box-shadow: 0 0 calc(8 * var(--u)) var(--hot); }
-.tk-hint { color: var(--dim); background: rgba(0, 0, 0, 0.36); }
-.tk-hint .tk-d { background: none; border: 1px solid var(--faint); }
-.tk kbd.cap { font-size: 0.85em; }
-@keyframes tk-in { from { opacity: 0; transform: translateY(calc(10 * var(--u))); } }
-@keyframes tk-out { to { opacity: 0; transform: translateY(calc(-16 * var(--u))); } }
+.tk[data-k="1"] { opacity: 0.72; }
+.tk[data-k="2"] { opacity: 0.45; }
+.tk.tk-new { opacity: 0; transform: translateY(calc(10 * var(--u))); transition: none; }
+.tk.tk-out { opacity: 0; transform: translateY(calc((var(--k, 0) + 0.6) * var(--step) * -1)); }
+.tk-t { display: inline-flex; align-items: center; gap: 0.35em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tk-warn { background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), color-mix(in srgb, var(--hot) 26%, rgba(0, 0, 0, 0.55)), rgba(0, 0, 0, 0.5)); }
+.tk-warn .tk-t { color: #fff; }
+.tk-hint { background: rgba(0, 0, 0, 0.4); color: var(--dim); }
+.tk kbd.cap { height: 1.55em; min-width: 1.55em; font-size: 0.82em; border: 0; background: rgba(255, 255, 255, 0.14); }
 
 .cluster {
   box-sizing: border-box; padding: calc(12 * var(--u)) calc(14 * var(--u)) calc(10 * var(--u));
@@ -147,18 +158,18 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .cl-main { display: flex; align-items: center; gap: calc(12 * var(--u)); margin-top: calc(6 * var(--u)); }
 .gear { flex: none; width: calc(46 * var(--u)); font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; text-align: center; transition: opacity 0.12s; }
 .gear.shifting { opacity: 0.35; }
-.spd-box { flex: 1 1 auto; display: flex; align-items: baseline; gap: calc(5 * var(--u)); min-width: 0; }
+/* speed: the number centred over its unit; neither moves another element when the digits change */
+.spd-box { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: calc(3 * var(--u)); min-width: 0; }
 .spd { font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; }
-.unit { font: 500 calc(11 * var(--u))/1 var(--sans); color: var(--dim); }
+.unit { font: 500 calc(10.5 * var(--u))/1 var(--sans); color: var(--faint); }
 .car { flex: none; width: calc(24 * var(--u)); height: calc(34 * var(--u)); overflow: visible; }
-.car .body { fill: none; stroke: var(--ghost); stroke-width: 1.5; }
-.car .axle { fill: none; stroke: var(--ghost); stroke-width: 1.5; }
+.car .axle { fill: none; stroke: var(--faint); stroke-width: 1.4; stroke-linecap: round; }
 .car .w { fill: rgba(255, 255, 255, 0.35); }
 .car .w.edge { fill: #fff; }
-.car .w.slip { fill: var(--hot); }
+.car .w.slip { fill: var(--cool); }
 .car .w.air { fill: rgba(255, 255, 255, 0.1); }
 .car .df { fill: #0a0a0a; stroke: var(--faint); stroke-width: 1.4; }
-.car .df.locked { fill: var(--accent); stroke: var(--accent); }
+.car .df.locked { fill: var(--cool); stroke: var(--cool); }
 .car .df.none { display: none; }
 .pedals { flex: none; display: flex; gap: calc(3 * var(--u)); height: calc(34 * var(--u)); }
 .pd { position: relative; width: calc(4 * var(--u)); height: 100%; border-radius: calc(2 * var(--u)); overflow: hidden; background: var(--ghost); }
@@ -170,13 +181,15 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .lamps { display: flex; align-items: center; gap: calc(4 * var(--u)); margin-top: calc(10 * var(--u)); }
 .lamp {
   flex: 1 1 0; display: grid; place-items: center; height: calc(24 * var(--u)); border-radius: calc(6 * var(--u));
-  color: var(--txt); transition: color 0.15s, opacity 0.15s;
+  color: var(--txt); transition: color 0.12s, opacity 0.12s;
 }
 .lamp svg { width: calc(17 * var(--u)); height: calc(17 * var(--u)); }
 .lamp b { font: 600 calc(10 * var(--u))/1 var(--sans); letter-spacing: 0.04em; }
 .lamp[data-s="off"] { opacity: 0.2; }
+.lamp[data-s="act"] { color: var(--cool); }
 .lamp[data-s="warn"] { color: var(--hot); }
 .lamp[data-s="blink"] { color: var(--hot); animation: blink 0.8s steps(1) infinite; }
+.lamp[data-s="pulse"] { color: var(--cool); animation: blink 1.2s steps(1) infinite; }
 
 /* info row: four fixed cells */
 .cl-info {
@@ -255,7 +268,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 
 /* focus ring: keyboard / gamepad navigation only */
 .overlay :focus { outline: none; }
-.overlay :focus-visible, .sheet.kbnav :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.overlay :focus-visible, .sheet.kbnav :focus { outline: 2px solid var(--cool); outline-offset: 2px; }
 .overlay .tab:focus-visible, .sheet.kbnav .tab:focus { outline-offset: -2px; }
 
 /* locations */
@@ -299,6 +312,28 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 }
 .set-info:hover .set-n, .set-info:focus .set-n { opacity: 1; visibility: visible; }
 .set-c { flex: none; }
+/* Interface tab: palette swatches and colour pickers */
+.set-row[data-key="uiPalette"] { flex-wrap: wrap; }
+.set-row[data-key="uiPalette"] .set-c { flex: 1 1 100%; }
+.set-pal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.set-pal button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.02);
+  color: var(--dim); font: 500 12px/1 var(--sans); cursor: pointer;
+}
+.set-pal button:hover { color: var(--txt); border-color: var(--line-2); }
+.set-pal button[aria-checked="true"] { color: var(--txt); border-color: var(--accent); background: rgba(255, 255, 255, 0.06); }
+.set-sw { display: flex; gap: 4px; }
+.set-sw i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.set-sw i.set-sw-c { background: var(--accent); }
+.set-sw i.set-sw-c:nth-child(2) { background: var(--cool); }
+.set-sw i.set-sw-c:nth-child(3) { background: var(--hot); }
+.set-color { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.set-color input { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line-2); border-radius: 50%; background: none; cursor: pointer; overflow: hidden; }
+.set-color input::-webkit-color-swatch-wrapper { padding: 0; }
+.set-color input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.set-color input::-moz-color-swatch { border: 0; border-radius: 50%; }
+.set-color output { min-width: 64px; font: 500 12px/1 var(--mono); color: var(--dim); text-transform: lowercase; }
 .seg { display: inline-flex; padding: 2px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); }
 .seg button { padding: 6px 9px; border: 0; border-radius: 6px; background: none; color: var(--dim); font: 500 12.5px/1 var(--sans); cursor: pointer; }
 .seg button:hover { color: var(--txt); }
@@ -363,7 +398,8 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 @keyframes rise { from { opacity: 0; } }
 @keyframes blink { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
-  .tk, .tk.out, .overlay, .sheet { animation: none; }
-  .lamp[data-s="blink"] { animation: none; }
+  .tk { transition: none; }
+  .overlay, .sheet { animation: none; }
+  .lamp[data-s="blink"], .lamp[data-s="pulse"] { animation: none; }
 }
 

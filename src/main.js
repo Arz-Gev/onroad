@@ -26,6 +26,7 @@ import { CarView } from './vehicle/carView.js';
 import { CameraRig, CAM_MODES, CAM_NAMES } from './cameraRig.js';
 import { Input } from './input.js';
 import { HUD, fmtPressure, escapeHTML } from './hud.js';
+import { PALETTES, applyTheme } from './theme.js';
 import { Menu } from './menu.js';
 import { Settings } from './settings.js';
 import { GameAudio } from './audio/audio.js';
@@ -302,9 +303,25 @@ async function main() {
     }])),
     renderScale: () => applyGraphics(),
     vegetation: () => applyGraphics(),
+    // interface colours: a palette writes its three colours (sync: they don't flip it to Custom); a colour
+    // picked by hand switches the palette to Custom
+    uiPalette(v) {
+      const P = PALETTES[v];
+      if (P) for (const [key, c] of [['uiAccent', P.accent], ['uiCool', P.cool], ['uiHot', P.hot]]) settings.set(key, c, { silent: true, sync: true });
+      applyUi();
+    },
+    uiAccent: uiColor, uiCool: uiColor, uiHot: uiColor,
+    uiGlass: () => applyUi(),
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
+  function uiColor(v, o) {
+    if (!o.sync && !o.startup && !o.reset && settings.get('uiPalette') !== 'custom') settings.set('uiPalette', 'custom', { silent: true });
+    applyUi();
+  }
+  function applyUi() {
+    applyTheme({ accent: settings.get('uiAccent'), cool: settings.get('uiCool'), hot: settings.get('uiHot'), glass: settings.get('uiGlass') });
+  }
   settings.onChange((key, v, o) => {
     if (APPLY[key]) APPLY[key](v, o, key);
     tuning.dirty = true;
