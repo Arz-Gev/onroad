@@ -1,19 +1,22 @@
 import { BINDINGS, capsHTML, padCapHTML } from './input.js';
 import { escapeHTML } from './hud.js';
+import { icon } from './icons.js';
 
-// Pause menu (Locations / Settings / Controls) and the first-start welcome card.
-// Both pause the game. Navigation: mouse, keyboard (arrows, Enter, Q/E for tabs, digits for
+// Pause menu (Locations / Settings / Graphics / Controls). It pauses the game. Navigation: mouse, keyboard (arrows, Enter, Q/E for tabs, digits for
 // locations, Esc) and gamepad (d-pad / left stick, A, B, LB/RB, Menu) via Input.uiHandler.
 //
 // The menu holds no game state: it reads and writes through `api`
-// ({ get, set, action, locations, teleport, recover, onPause, introDone, device }) supplied by main.js.
+// ({ get, set, action, locations, teleport, recover, onPause, device, carName }) supplied by main.js.
 
 const TABS = [
-  { id: 'locations', label: 'Locations', hot: 'locations' },
-  { id: 'settings', label: 'Settings' },
-  { id: 'graphics', label: 'Graphics' },
-  { id: 'controls', label: 'Controls', hot: 'controls' },
+  { id: 'locations', label: 'Locations', hot: 'locations', icon: 'pin' },
+  { id: 'settings', label: 'Settings', icon: 'sliders' },
+  { id: 'graphics', label: 'Graphics', icon: 'monitor' },
+  { id: 'controls', label: 'Controls', hot: 'controls', icon: 'keyboard' },
 ];
+// plain-text key for a tooltip ("Recover · R")
+const keyText = id => { const b = BINDINGS.find(x => x.id === id); return b ? b.keys.join(' / ') : ''; };
+const tip = (label, id) => escapeHTML(id && keyText(id) ? `${label} · ${keyText(id)}` : label);
 
 const fmtClock = min => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 const row = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
@@ -24,7 +27,7 @@ const SECTIONS = [
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
     row('handbrake', 'Handbrake', 'seg', { options: [['hold', 'Hold'], ['toggle', 'Toggle'], ['auto', 'Auto']], note: 'Hold: while the key is down. Toggle: press on, press off. Auto: a short tap toggles, a long press holds.' }),
     row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the car right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the car can still slide or spin.' }),
-    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower pressure: bigger footprint, more grip off-road.' }),
+    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
   ] },
   { title: 'View', rows: [
     row('camera', 'Camera', 'seg', { hot: 'camera', options: [['chase', 'Chase'], ['cockpit', 'Cockpit'], ['hood', 'Hood'], ['wheel', 'Wheel'], ['orbit', 'Orbit']] }),
@@ -37,7 +40,7 @@ const SECTIONS = [
   ] },
   { title: 'Vehicle', rows: [
     row('headlights', 'Headlights', 'seg', { hot: 'headlights', options: [[0, 'Off'], [1, 'Low'], [2, 'High']] }),
-    row('lightBar', 'Light bar', 'switch', { hot: 'lightBar' }),
+    row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', car: 'defender' }),
     row('hazards', 'Hazard lights', 'switch', { hot: 'hazards' }),
   ] },
   { title: 'Units', rows: [
@@ -98,14 +101,12 @@ export class Menu {
   constructor(api) {
     this.api = api;
     this.root = document.getElementById('menu');
-    this.introRoot = document.getElementById('intro');
     this.tab = 'locations';
     this.isOpen = false;
-    this.introOpen = false;
     this.build();
   }
 
-  get blocking() { return this.isOpen || this.introOpen; }
+  get blocking() { return this.isOpen; }
 
   // ------------------------------------------------------------------ build
   build() {
@@ -113,15 +114,15 @@ export class Menu {
     r.innerHTML = `
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-title">
         <header class="sheet-head">
-          <div class="titles"><div class="eyebrow">Onroad · ${this.api.carName}</div><h1 id="m-title">Paused</h1></div>
+          <div class="brand"><b id="m-title">Onroad</b><span>${escapeHTML(this.api.carName || '')}</span></div>
+          <nav class="tabs" role="tablist">
+            ${TABS.map(t => `<button class="tab" type="button" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}" aria-label="${t.label}" title="${tip(t.label, t.hot)}">${icon(t.icon)}<span class="tab-l">${t.label}</span></button>`).join('')}
+          </nav>
           <div class="head-actions">
-            <button class="btn" type="button" data-act="recover">Recover <span class="kc" data-cap="recover"></span></button>
-            <button class="btn primary" type="button" data-act="resume">Resume <span class="kc" data-cap="menu"></span></button>
+            <button class="ibtn" type="button" data-act="recover" aria-label="Recover" title="${tip('Recover', 'recover')}">${icon('recover')}</button>
+            <button class="ibtn primary" type="button" data-act="resume" aria-label="Resume" title="${tip('Resume', 'menu')}">${icon('play')}</button>
           </div>
         </header>
-        <nav class="tabs" role="tablist">
-          ${TABS.map(t => `<button class="tab" type="button" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}">${t.label}${t.hot ? `<span class="kc">${hotHTML(t.hot)}</span>` : ''}</button>`).join('')}
-        </nav>
         <section class="pane" role="tabpanel" id="pane-locations" data-pane="locations"></section>
         <section class="pane" role="tabpanel" id="pane-settings" data-pane="settings" hidden></section>
         <section class="pane" role="tabpanel" id="pane-graphics" data-pane="graphics" hidden></section>
@@ -155,17 +156,15 @@ export class Menu {
     });
     // keyboard / pad focus ring only after keyboard or pad navigation
     r.addEventListener('pointerdown', () => this.sheet.classList.remove('kbnav'));
-    this.introRoot.addEventListener('click', e => { if (e.target.closest('[data-act="start"]')) this.closeIntro(); });
   }
 
   buildLocations() {
     const locs = this.api.locations;
     this.panes.locations.innerHTML = `
-      <p class="pane-lead">Teleport anywhere on the map. The proving ground lanes test one thing each.</p>
       <div class="loc-grid">${locs.map((l, i) => `
-        <button class="loc" type="button" data-loc="${i}">
+        <button class="loc" type="button" data-loc="${i}" title="${escapeHTML(l.desc || '')}">
           <span class="loc-n">${i + 1}</span>
-          <span class="loc-b"><span class="loc-tag">${escapeHTML(l.tag)}<span class="loc-here" hidden>You are here</span></span><span class="loc-name">${escapeHTML(l.title)}</span><span class="loc-desc">${escapeHTML(l.desc)}</span></span>
+          <span class="loc-b"><span class="loc-name">${escapeHTML(l.title)}<span class="loc-here" hidden>here</span></span><span class="loc-tag">${escapeHTML(l.tag)}</span></span>
         </button>`).join('')}
       </div>`;
   }
@@ -181,10 +180,11 @@ export class Menu {
       if (r.type === 'buttons') return `<div class="btns">${r.buttons.map(([a, l]) => `<button type="button" class="btn small" data-action="${a}">${l}</button>`).join('')}</div>`;
       return '';
     };
+    const car = this.api.carId;
     pane.innerHTML = `<div class="set-cols">${sections.map(s => `
-      <div class="set-sec"><h2>${s.title}</h2>${s.rows.map(r => `
+      <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
-          ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}</div>${r.note ? `<div class="set-n">${r.note}</div>` : ''}</div>` : ''}
+          ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
           <div class="set-c">${ctl(r)}</div>
         </div>`).join('')}</div>`).join('')}</div>`;
   }
@@ -198,16 +198,14 @@ export class Menu {
           <div class="ctl-table">${BINDINGS.filter(b => b.group === g).map(b => `
             <div class="ctl-row"><span class="ctl-a">${escapeHTML(b.label)}</span><span class="ctl-k">${capsHTML(b.id, 'kb', { all: true })}</span><span class="ctl-p">${padCapHTML(b.id)}</span></div>`).join('')}
           </div></div>`).join('')}
-      </div>
-      <div class="callout"><b>Getting stuck?</b> Stop, shift to low range (${capsHTML('range')}), lock the centre diff (${capsHTML('centreLock')}) and the axle lockers (${capsHTML('lockers')}), and air the tyres down (${capsHTML('pressureDown')}). ${capsHTML('recover')} always puts you back on your wheels.</div>`;
+      </div>`;
   }
 
-  // device-dependent labels: header buttons, footer hints, welcome card
+  // device-dependent labels: header buttons, footer hints
   renderDevice() {
     const dev = this.api.device();
     for (const el of this.root.querySelectorAll('[data-cap]')) el.innerHTML = capsHTML(el.dataset.cap, dev);
     this.renderFoot();
-    if (this.introOpen) this.renderIntro();
   }
 
   renderFoot() {
@@ -279,15 +277,13 @@ export class Menu {
       if (d.fullscreenElement) Promise.resolve(d.exitFullscreen?.()).catch(() => {}).then(done);
       else Promise.resolve(d.documentElement.requestFullscreen?.())
         .then(() => navigator.keyboard?.lock?.(['Escape'])).catch(() => {}).then(done);
-    } else if (a === 'intro') { this.close(); this.openIntro(); return; }
-    else if (a === 'resetSettings') this.api.set('resetSettings', true);
+    } else if (a === 'resetSettings') this.api.set('resetSettings', true);
     else this.api.action(a);
     this.refresh();
   }
 
   // ------------------------------------------------------------------ open / close
   open(tab) {
-    if (this.introOpen) return;
     if (!this.isOpen) {
       this.isOpen = true;
       this.root.hidden = false;
@@ -378,11 +374,6 @@ export class Menu {
   handle(ev) {
     if (ev.type === 'pad') { this.handlePad(ev.btn); return true; }
     const e = ev.e, code = e.code;
-    if (this.introOpen) {
-      if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space' || code === 'Escape') { if (!e.repeat) this.closeIntro(); return true; }
-      if (code === 'KeyH') { this.closeIntro(); this.open('controls'); return true; }
-      return code === 'Tab' || DRIVE_KEYS.has(code);                     // focus stays on the card
-    }
     if (!this.isOpen) return false;
     const nav = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Space'];
     if (nav.includes(code)) this.sheet.classList.add('kbnav');
@@ -406,7 +397,6 @@ export class Menu {
   }
 
   handlePad(btn) {
-    if (this.introOpen) { if (btn === 'accept' || btn === 'back' || btn === 'menu') this.closeIntro(); return; }
     if (!this.isOpen) return;
     this.sheet.classList.add('kbnav');
     const el = document.activeElement;
@@ -417,51 +407,6 @@ export class Menu {
     else if (btn === 'back' || btn === 'menu') this.close();
     else if (btn === 'prevTab') { this.cycleTab(-1); this.focusFirst(); }
     else if (btn === 'nextTab') { this.cycleTab(1); this.focusFirst(); }
-  }
-
-  // ------------------------------------------------------------------ welcome card
-  openIntro() {
-    this.introOpen = true;
-    this.renderIntro();
-    this.introRoot.hidden = false;
-    this.api.onPause(true);
-    this.introRoot.querySelector('[data-act="start"]').focus({ preventScroll: true });
-  }
-
-  closeIntro() {
-    if (!this.introOpen) return;
-    this.introOpen = false;
-    this.introRoot.hidden = true;
-    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
-    this.api.introDone();
-    this.api.onPause(this.blocking);
-  }
-
-  renderIntro() {
-    const dev = this.api.device(), k = id => capsHTML(id, dev);
-    const or = '<span class="or">/</span>';
-    const kb = l => `<kbd class="cap">${l}</kbd>`;
-    const rows = [
-      [dev === 'pad' ? k('throttle') + k('brake') : kb('W') + kb('S') + or + kb('↑') + kb('↓'), 'Throttle and brake. Hold brake at a stop to reverse.'],
-      [dev === 'pad' ? k('steer') : kb('A') + kb('D') + or + kb('←') + kb('→'), 'Steer'],
-      [k('handbrake'), 'Handbrake'],
-      [k('camera'), dev === 'pad' ? 'Change camera · right stick looks around' : 'Change camera · drag the mouse to look around'],
-      [k('recover'), 'Recover when stuck or upside down'],
-      [k('menu'), 'Menu: locations, settings, all controls'],
-    ];
-    const startCap = dev === 'pad' ? '<kbd class="cap pad pad-a">A</kbd>' : '<kbd class="cap">Enter</kbd>';
-    this.introRoot.innerHTML = `
-      <div class="card intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
-        <div class="eyebrow">Onroad · ${this.api.carName}</div>
-        <h1 id="intro-title">Hang the tail out</h1>
-        <p class="lead">Rear-wheel drive on a real track. The manual gearbox with auto-clutch is ready; here are the essentials.</p>
-        <div class="intro-keys">${rows.map(([c, t]) => `<div class="ik">${c}</div><div class="it">${t}</div>`).join('')}</div>
-        <div class="callout"><b>Drifting:</b> turn in, pull ${k('handbrake')} to kick the rear out, then catch it with counter-steer and hold the slide on the throttle. ${k('shiftUp')} ${k('shiftDown')} change gear.</div>
-        <div class="intro-foot">
-          <span class="fine">${dev === 'pad' ? `${k('menu')} opens the menu at any time.` : `${k('controls')} shows every control at any time.`}</span>
-          <button class="btn primary big" type="button" data-act="start">Start driving ${startCap}</button>
-        </div>
-      </div>`;
   }
 }
 

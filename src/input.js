@@ -42,7 +42,7 @@ export const BINDINGS = [
   { id: 'time', group: 'Camera & world', label: 'Time of day: jump to day, dusk, night', codes: ['KeyN'], keys: ['N'] },
 
   { id: 'menu', group: 'Game', label: 'Menu (pauses the game)', codes: ['Escape'], keys: ['Esc'], pad: 'Menu', button: PAD.MENU },
-  { id: 'locations', group: 'Game', label: 'Locations: teleport to the proving ground lanes', codes: ['KeyP'], keys: ['P'] },
+  { id: 'locations', group: 'Game', label: 'Locations: teleport around the map', codes: ['KeyP'], keys: ['P'] },
   { id: 'controls', group: 'Game', label: 'Controls (this list)', codes: ['KeyH'], keys: ['H'] },
   { id: 'mute', group: 'Game', label: 'Sound on / off', codes: ['KeyV'], keys: ['V'] },
   { id: 'suspension', group: 'Game', label: 'Suspension and tyre load panel', codes: ['KeyU'], keys: ['U'] },

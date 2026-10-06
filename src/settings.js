@@ -2,7 +2,6 @@
 // blocked site data or sandboxed frames can throw, and the game must still run with the defaults.
 
 const KEY = 'onroad.settings.v1';
-const INTRO_KEY = 'onroad.introSeen.v1';
 
 export const DEFAULTS = {
   gearbox: 'manual',        // 'auto' | 'manual'
@@ -117,6 +116,4 @@ export class Settings {
   save() { storage.set(KEY, JSON.stringify(this.v)); }
   reset() { for (const k in DEFAULTS) this.set(k, DEFAULTS[k], { silent: true, reset: true }); }
 
-  get introSeen() { return storage.get(INTRO_KEY) === '1'; }
-  set introSeen(v) { if (v) storage.set(INTRO_KEY, '1'); else storage.remove(INTRO_KEY); }
 }

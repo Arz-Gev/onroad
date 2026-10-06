@@ -9,6 +9,7 @@ export function makeDefenderParams() {
   const track = 1.56;
   return {
     name: 'Defender 110 V8',
+    model: 'defender',
     bodyMass: 1880,                       // sprung mass incl. roof rack, winch, spare
     // principal inertia about the COM: pitch (x), yaw (y), roll (z). The axles' mass sits in this body, so
     // yaw includes them at +-1.4 m (they swing sideways with the body); pitch and roll only their small
@@ -134,7 +135,6 @@ export function makeS15Params() {
     ...P,
     name: 'Silvia S15',
     model: 's15',
-    tunable: false,              // tuning.js / the tuning panel only know the Defender for now
     layout: 'rwd',
     rearDiff: 'welded',
     lsd: { preload: 80, power: 0.6, coast: 0.35 },

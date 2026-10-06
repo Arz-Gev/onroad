@@ -34,7 +34,7 @@ npm run simtest    # headless physics checks (settle, accel, brake, slope, climb
 See **DEVNOTES.md** for conventions, baselines, known traps, testing workflow and the backlog.
 
 ## Controls
-**Esc** (gamepad **Menu**) pauses and opens the menu: **Locations** (teleport), **Settings** (gearbox, camera, time of day, sound and volume, units, HUD options) and the full **Controls** list. The first start shows a short controls card. Settings are saved in the browser.
+**Esc** (gamepad **Menu**) pauses and opens the menu: **Locations** (teleport), **Settings** (gearbox, camera, time of day, sound and volume, units, HUD options) and the full **Controls** list. Settings are saved in the browser. **Tab** opens the tuning panel (per car: engine, gearing, rear diff, tyres, suspension, brakes, mass, steering lock); the (i) button there shows the explanations.
 
 | Keyboard | Gamepad | Action |
 |---|---|---|

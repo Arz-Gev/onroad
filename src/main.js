@@ -14,8 +14,8 @@ import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
 import { buildTrack } from './world/track.js';
-import { makeDefenderParams, makeS15Params } from './vehicle/params.js';
-import { applySetup, rideRaise } from './vehicle/tuning.js';
+import { makeDefenderParams } from './vehicle/params.js';
+import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
 import { Vehicle } from './vehicle/Vehicle.js';
@@ -137,16 +137,16 @@ async function main() {
   }
 
   setLoading('Building the car…', 0.68); await frame();
-  // the player's tuning setup (saved) goes into the params before the truck is built
-  const tuningApi = {};
-  const tuning = new TuningPanel(tuningApi);
-  // ?car=defender brings back the truck; the S15 skips the tuning setup (tuning.js only knows the Defender)
+  // ?car=defender brings back the truck. The player's tuning setup (saved per car) goes into the params
+  // before the car is built.
   const carId = params.get('car') === 'defender' ? 'defender' : 's15';
-  const P = carId === 'defender' ? applySetup(makeDefenderParams(), tuning.setup) : makeS15Params();
+  const tuningApi = {};
+  const tuning = new TuningPanel(tuningApi, carId);
+  const P = tuning.T.applySetup(tuning.T.make(), tuning.setup);
   const surfaceAt = (col, p) => (col && colliderSurface.get(col.handle)) || terrain.surfaceAt(p.x, p.z);
   const spawnY = terrain.heightAt(spawn.x, spawn.z) + 0.12 + rideRaise(P);
   const vehicle = new Vehicle(RAPIER, world, P, { position: { x: spawn.x, y: spawnY, z: spawn.z }, yaw: spawn.yaw, surfaceAt });
-  if (P.tunable !== false) vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
+  vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
   world.step();
   const model = carId === 'defender'
     ? buildTruck(makeDefenderParams())   // modelled stock; the view scales the wheels and follows the lift
@@ -393,6 +393,7 @@ async function main() {
   }
   const menu = new Menu({
     carName: P.name,
+    carId,
     locations: teleports,
     device: () => input.device,
     get(key) {
@@ -434,7 +435,6 @@ async function main() {
     teleport,
     recover,
     onPause: setPaused,
-    introDone: () => { settings.introSeen = true; },
   });
   game.menu = menu;
   Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), toast: (html, kind, key) => say(key, html, kind), redraw: () => { game.redraw = 3; } });
@@ -591,8 +591,6 @@ async function main() {
   setTimeout(() => loading.remove(), 600);
   started = true;
 
-  if (!settings.introSeen) menu.openIntro();
-  else say('welcome', `${P.name} · ${d.mode === 'auto' ? 'automatic' : 'manual'} · ${k('menu')} menu · ${k('controls')} controls`, '', 5);
 
   let last = performance.now();
   function loop(now) {

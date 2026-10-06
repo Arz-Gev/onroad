@@ -2,10 +2,11 @@
 // in its own Rapier world. Runs in a worker (dyno.worker.js) so the game keeps its frame rate; the panel
 // falls back to running it in slices on the main thread if workers are unavailable.
 import { Vehicle } from './Vehicle.js';
+import { SURFACES } from './tire.js';
 
 const H = 1 / 240;
 
-export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], target = 100, maxT = 45, stepsPerYield = 240 } = {}) {
+export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], surface = 'dirt', target = 100, maxT = 45, stepsPerYield = 240 } = {}) {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = H;
   // 160 m x 1400 m flat strip (the truck runs towards -z). Wide: with no one at the wheel the truck wanders a
@@ -13,7 +14,7 @@ export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], t
   const n = 8, m = 280, heights = new Float32Array((n + 1) * (m + 1));
   world.createCollider(RAPIER.ColliderDesc.heightfield(n, m, heights, { x: 160, y: 1, z: 1400 }).setFriction(0.8));
   world.step();
-  const v = new Vehicle(RAPIER, world, P, { position: { x: 0, y: 0.15 + (P.tire.radius - 0.42), z: 650 } });
+  const v = new Vehicle(RAPIER, world, P, { position: { x: 0, y: 0.15 + (P.tire.radius - 0.42), z: 650 }, surfaceAt: () => SURFACES[surface] || SURFACES.dirt });
   v.pressures = [...pressures];
   const d = v.drivetrain;
   if (gearbox === 'manual') d.toggleMode();
