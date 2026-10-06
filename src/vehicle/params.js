@@ -117,7 +117,7 @@ export function makeDefenderParams() {
 // Silvia S15 (model: public/models/s15.glb). Numbers from the Assetto Corsa S14/180SX drift setups in
 // "cars and tracks" (SR20DET torque curve and turbo, 5-speed gearing, 2.525 m wheelbase, 52 % front, 1300 kg).
 // Rear-wheel drive with a welded diff (the AC setups run POWER = COAST = 1.0); the lockers key switches
-// to a 1.5-way LSD or an open diff. Suspension is still the Defender's solid axles (PLAN.md step 1).
+// to a 1.5-way LSD or an open diff.
 export function makeS15Params() {
   const P = makeDefenderParams();
   const wheelbase = 2.525;
@@ -145,22 +145,24 @@ export function makeS15Params() {
     aero: { cdA: 0.62, rho: 1.2 },
     wheelbase,
     track,
+    // Independent suspension: MacPherson struts at the front, multilink at the rear (Vehicle.cornerSubstep).
+    // Per corner: k is the wheel rate (N/m at the wheel), bump / rebound the damping at the wheel, mass the
+    // axle's unsprung mass (both corners). arb is the bar's roll stiffness (N·m/rad), rcY the roll centre
+    // height (a lowered strut car's sits near the ground), anti the anti-dive / anti-squat fraction.
+    suspension: 'independent',
     axles: [
       {
         name: 'front', z: -wheelbase / 2, droopY: 0.29, travel: 0.11,
-        mass: 90, rollInertia: 40,
-        springTrack: 1.42, k: 70000, preload: 0.0,
-        damperTrack: 1.42, bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 9000,
+        mass: 90, k: 70000, preload: 0.0,
+        bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
+        arb: 9000, rcY: 0.05, anti: 0.15,
         steered: true,
       },
       {
         name: 'rear', z: wheelbase / 2, droopY: 0.277, travel: 0.11,
-        mass: 90, rollInertia: 40,
-        springTrack: 1.38, k: 45000, preload: 0.0,
-        damperTrack: 1.38, bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 3000,
-        rollSteer: 0,
+        mass: 90, k: 45000, preload: 0.0,
+        bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
+        arb: 3000, rcY: 0.09, anti: 0.3,
         steered: false,
       },
     ],

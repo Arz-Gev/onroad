@@ -141,11 +141,9 @@ export class GameAudio {
     this.lastGrind = d.grind;
     // bump stops / landing knocks
     this.knockCooldown -= dt;
-    for (const ax of v.axles) {
-      for (let s = 0; s < 2; s++) {
-        const comp = ax.c + (s ? 1 : -1) * ax.p.springTrack / 2 * Math.sin(ax.phi);
-        if ((comp > ax.p.travel - 0.025 || comp < 0.005) && Math.abs(ax.vz - ax.vMountU) > 0.6) this.knock(Math.min(1, Math.abs(ax.vz - ax.vMountU) / 3));
-      }
+    for (const w of v.wheels) {
+      const comp = v.wheelComp(w), rate = Math.abs(v.wheelCompRate(w));
+      if ((comp > w.axle.p.travel - 0.025 || comp < 0.005) && rate > 0.6) this.knock(Math.min(1, rate / 3));
     }
   }
 

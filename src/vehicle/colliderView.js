@@ -167,9 +167,8 @@ export class ColliderView {
     const R = v.R;
     v.wheels.forEach((w, i) => {
       const ax = w.axle, ap = ax.p, o = this.wheels[i];
-      _q.setFromAxisAngle(Z, ax.phi);
-      _v.set(w.side * P.track / 2, 0, 0).applyQuaternion(_q);
-      _v.y += ax.droopY + ax.c; _v.z += ap.z;
+      _q.setFromAxisAngle(Z, v.wheelRoll(w));
+      v.hubLocal(w, _v);
       _q2.copy(_q).multiply(_q.setFromAxisAngle(Y, -w.steer));
       o.cyl.position.copy(_v); o.cyl.quaternion.copy(_q2);
       const cr = R - 0.12 * R / 0.42;
@@ -183,8 +182,8 @@ export class ColliderView {
       const hitW = w.sideCollider ? touchPoints(world, w.sideCollider) > 0 : false;
       o.cyl.material.color.copy(hitW ? COL.hit : COL.wheel);
       // travel gauge: spring compression at this side, 0 = full droop, travel = hard stop
-      const g = this.gauges[i], s2 = ap.springTrack / 2;
-      const comp = ax.c + w.side * s2 * Math.sin(ax.phi);
+      const g = this.gauges[i];
+      const comp = v.wheelComp(w);
       g.g.position.set(w.side * (D.W + 0.12), ax.droopY, ap.z + (ax.i === 0 ? -0.62 : 0.62));
       g.rail.scale.y = ap.travel;
       g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
