@@ -6,7 +6,7 @@ import { icon } from './icons.js';
 // locations, Esc) and gamepad (d-pad / left stick, A, B, LB/RB, Menu) via Input.uiHandler.
 //
 // The menu holds no game state: it reads and writes through `api`
-// ({ get, set, action, locations, teleport, recover, onPause, device, carName }) supplied by main.js.
+// ({ get, set, action, locations, teleport, recover, onPause, device, carId }) supplied by main.js.
 
 const TABS = [
   { id: 'locations', label: 'Locations', hot: 'locations', icon: 'pin' },
@@ -21,7 +21,7 @@ const tip = (label, id) => escapeHTML(id && keyText(id) ? `${label} · ${keyText
 const fmtClock = min => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 const row = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
 const SECTIONS = [
-  { title: 'Driving', rows: [
+  { title: 'Driving', col: 1, rows: [
     row('gearbox', 'Gearbox', 'seg', { hot: 'gearbox', options: [['auto', 'Automatic'], ['manual', 'Manual']] }),
     row('autoClutch', 'Auto-clutch', 'switch', { hot: 'autoClutch', note: 'Off: hold Shift for the clutch.' }),
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
@@ -29,25 +29,25 @@ const SECTIONS = [
     row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the car right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the car can still slide or spin.' }),
     row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
   ] },
-  { title: 'View', rows: [
+  { title: 'View', col: 1, rows: [
     row('camera', 'Camera', 'seg', { hot: 'camera', options: [['chase', 'Chase'], ['cockpit', 'Cockpit'], ['hood', 'Hood'], ['wheel', 'Wheel'], ['orbit', 'Orbit']] }),
     row('time', 'Time of day', 'range', { hot: 'time', min: 0, max: 1435, step: 5, scale: 60, fmt: fmtClock, note: 'The picture follows the slider at once. Day 13:00, dusk 19:30, night 23:00.' }),
     row('timeQuick', '', 'seg', { quick: true, options: [['day', 'Day'], ['dusk', 'Dusk'], ['night', 'Night']] }),
   ] },
-  { title: 'Sound', rows: [
+  { title: 'Sound', col: 1, rows: [
     row('sound', 'Sound', 'switch', { hot: 'mute' }),
     row('volume', 'Volume', 'range', { min: 0, max: 100, step: 5, scale: 100, unit: '%' }),
   ] },
-  { title: 'Vehicle', rows: [
+  { title: 'Vehicle', col: 1, rows: [
     row('headlights', 'Headlights', 'seg', { hot: 'headlights', options: [[0, 'Off'], [1, 'Low'], [2, 'High']] }),
     row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', car: 'defender' }),
     row('hazards', 'Hazard lights', 'switch', { hot: 'hazards' }),
   ] },
-  { title: 'Units', rows: [
+  { title: 'Units', col: 2, rows: [
     row('speedUnit', 'Speed', 'seg', { options: [['kmh', 'km/h'], ['mph', 'mph']] }),
     row('pressureUnit', 'Tyre pressure', 'seg', { options: [['psi', 'psi'], ['bar', 'bar']] }),
   ] },
-  { title: 'HUD', rows: [
+  { title: 'HUD', col: 2, rows: [
     row('cluster', 'Instrument cluster', 'seg', { options: [['auto', 'Auto'], ['full', 'Full'], ['compact', 'Compact']], note: 'Auto: compact in the cockpit view and in small windows.' }),
     row('hudScale', 'HUD size', 'range', { min: 70, max: 150, step: 5, scale: 100, unit: '%' }),
     row('hints', 'Key hints', 'switch'),
@@ -55,7 +55,7 @@ const SECTIONS = [
     row('telemetry', 'Telemetry', 'switch', { hot: 'telemetry' }),
     row('fps', 'FPS counter', 'switch'),
   ] },
-  { title: 'Game', rows: [
+  { title: 'Game', col: 2, rows: [
     row('autoPause', 'Pause when the window loses focus', 'switch'),
     row('_game', '', 'buttons', { buttons: [['resetSettings', 'Reset settings']] }),
   ] },
@@ -63,24 +63,24 @@ const SECTIONS = [
 
 // Graphics tab. Changing any option below the preset switches the preset to Custom.
 const GFX_SECTIONS = [
-  { title: 'Preset', rows: [
+  { title: 'Preset', col: 1, rows: [
     row('quality', 'Quality', 'seg', { options: [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra'], ['custom', 'Custom']], note: 'Auto picks a preset for your graphics chip.' }),
     row('renderScale', 'Resolution', 'range', { min: 50, max: 100, step: 5, scale: 100, unit: '%', note: 'Lower renders fewer pixels: faster, softer.' }),
     row('fullscreen', 'Fullscreen', 'switch'),
     row('gDpr', 'Pixel density cap', 'range', { min: 100, max: 200, step: 25, scale: 100, unit: '%', note: 'For high-density screens (Retina, 4K laptops, Windows scaling above 100%): how many of the screen\'s extra pixels to render. The biggest cost of all.' }),
   ] },
-  { title: 'Lighting and effects', rows: [
+  { title: 'Lighting and effects', col: 1, rows: [
     row('gShadows', 'Shadows', 'seg', { options: [['off', 'Off'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High'], ['ultra', 'Ultra']], note: 'Sun shadow sharpness and distance.' }),
     row('gSSAO', 'Ambient occlusion', 'seg', { options: [['off', 'Off'], ['low', 'Low'], ['high', 'High']], note: 'SSAO: contact shading in corners, under the car and along kerbs and walls. About 1–2 ms.' }),
     row('gAA', 'Anti-aliasing', 'seg', { options: [['off', 'Off'], ['fxaa', 'FXAA'], ['msaa2', 'MSAA 2×'], ['msaa4', 'MSAA 4×']], note: 'MSAA is sharper, FXAA is cheaper.' }),
     row('gBloom', 'Bloom', 'switch', { note: 'Glow around lamps and the sun.' }),
   ] },
-  { title: 'World detail', rows: [
+  { title: 'World detail', col: 2, rows: [
     row('gViewDist', 'Terrain detail distance', 'range', { min: 60, max: 150, step: 5, scale: 100, unit: '%' }),
     row('gTerrain', 'Ground shading', 'seg', { options: [[0, 'Low'], [1, 'Medium'], [2, 'High']] }),
     row('gTreeShadows', 'Distant tree shadows', 'switch'),
   ] },
-  { title: 'Grass and bushes', rows: [
+  { title: 'Grass and bushes', col: 2, rows: [
     row('vegetation', 'Grass and bushes', 'switch', { note: 'Off hides all the grass and undergrowth (trees stay). The most expensive part of the world.' }),
     row('gGrass', 'Grass density', 'range', { veg: true, min: 4, max: 96, step: 1, scale: 100, dp: 2, unit: '×' }),
     row('gGrassHeight', 'Grass height', 'range', { veg: true, min: 180, max: 390, step: 5, scale: 100, dp: 2, unit: '×' }),
@@ -114,9 +114,9 @@ export class Menu {
     r.innerHTML = `
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-title">
         <header class="sheet-head">
-          <div class="brand"><b id="m-title">Onroad</b><span>${escapeHTML(this.api.carName || '')}</span></div>
+          <div class="brand"><b id="m-title">Onroad</b><span id="m-sec"></span></div>
           <nav class="tabs" role="tablist">
-            ${TABS.map(t => `<button class="tab" type="button" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}" aria-label="${t.label}" title="${tip(t.label, t.hot)}">${icon(t.icon)}<span class="tab-l">${t.label}</span></button>`).join('')}
+            ${TABS.map(t => `<button class="tab" type="button" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}" aria-label="${t.label}" title="${tip(t.label, t.hot)}">${icon(t.icon)}</button>`).join('')}
           </nav>
           <div class="head-actions">
             <button class="ibtn" type="button" data-act="recover" aria-label="Recover" title="${tip('Recover', 'recover')}">${icon('recover')}</button>
@@ -181,12 +181,14 @@ export class Menu {
       return '';
     };
     const car = this.api.carId;
-    pane.innerHTML = `<div class="set-cols">${sections.map(s => `
+    // two fixed columns (each section names its own): rows that hide or show never move a section across
+    const col = c => sections.filter(s => (s.col || 1) === c).map(s => `
       <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
           ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
           <div class="set-c">${ctl(r)}</div>
-        </div>`).join('')}</div>`).join('')}</div>`;
+        </div>`).join('')}</div>`).join('');
+    pane.innerHTML = `<div class="set-cols"><div class="set-col">${col(1)}</div><div class="set-col">${col(2)}</div></div>`;
   }
 
   buildControls() {
@@ -313,6 +315,7 @@ export class Menu {
       b.tabIndex = on ? 0 : -1;
     }
     for (const [k, p] of Object.entries(this.panes)) p.hidden = k !== id;
+    this.root.querySelector('#m-sec').textContent = TABS.find(t => t.id === id).label;
     this.panes[id].scrollTop = 0;
     this.renderFoot();
     if (focus) this.root.querySelector(`.tab[data-tab="${id}"]`).focus();

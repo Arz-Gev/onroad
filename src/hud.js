@@ -269,6 +269,8 @@ export class HUD {
 
     // transfer case + diffs
     if (d.range !== c.range) { c.range = d.range; e.range.dataset.v = d.range; }
+    // a car without a transfer case (fixed RWD) has no range to show
+    if (d.fixedRwd !== c.fixedRwd) { c.fixedRwd = d.fixedRwd; e.range.parentElement.hidden = !!d.fixedRwd; }
     const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0);
     if (locks !== c.locks) {
       c.locks = locks;
@@ -309,7 +311,7 @@ export class HUD {
     this.lamp(e.tHb, 'hb', v.ctl.handbrake > 0.5);
     const abs = !v.abs ? 'ABS OFF' : v.absActive > 0 ? 'ABS' : '';
     if (abs !== c.abs) { c.abs = abs; e.tAbs.hidden = !abs; if (abs) e.tAbs.textContent = abs; }
-    this.lamp(e.tRwd, 'rwd', d.rwd);
+    this.lamp(e.tRwd, 'rwd', d.rwd && !d.fixedRwd);
     const tc = !v.tc ? 'TC OFF' : v.tcActive > 0 ? 'TC' : '';
     if (tc !== c.tc) { c.tc = tc; e.tTc.hidden = !tc; if (tc) e.tTc.textContent = tc; }
     const head = view.lights.head;

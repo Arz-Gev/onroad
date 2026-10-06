@@ -392,7 +392,6 @@ async function main() {
     game.redraw = 3;
   }
   const menu = new Menu({
-    carName: P.name,
     carId,
     locations: teleports,
     device: () => input.device,
