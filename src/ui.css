@@ -158,10 +158,10 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .cl-main { display: flex; align-items: center; gap: calc(12 * var(--u)); margin-top: calc(6 * var(--u)); }
 .gear { flex: none; width: calc(46 * var(--u)); font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; text-align: center; transition: opacity 0.12s; }
 .gear.shifting { opacity: 0.35; }
-/* speed: the number centred over its unit; neither moves another element when the digits change */
-.spd-box { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: calc(3 * var(--u)); min-width: 0; }
+/* speed: the unit on the left, the number after it, left-aligned: more digits grow to the right only */
+.spd-box { flex: 1 1 auto; display: flex; align-items: baseline; gap: calc(6 * var(--u)); min-width: 0; }
 .spd { font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; }
-.unit { font: 500 calc(10.5 * var(--u))/1 var(--sans); color: var(--faint); }
+.unit { order: -1; font: 500 calc(9 * var(--u))/1 var(--sans); color: var(--faint); }
 .car { flex: none; width: calc(24 * var(--u)); height: calc(34 * var(--u)); overflow: visible; }
 .car .axle { fill: none; stroke: var(--faint); stroke-width: 1.4; stroke-linecap: round; }
 .car .w { fill: rgba(255, 255, 255, 0.35); }
