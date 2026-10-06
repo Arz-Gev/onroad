@@ -4,7 +4,7 @@ A JDM touge drifting game built on the Offroad Defender engine. **See PLAN.md** 
 
 By default the game drives a **Nissan Silvia S15** (RWD drift setup, `public/models/s15.glb`) on **Ebisu North** (converted from Assetto Corsa, `public/models/ebisu_north.glb`). The old game is still in the code while it gets replaced: `?car=defender` brings back the Defender 110, `?map=offroad` the procedural offroad map, `?trees=1` the Ebisu trees. Settings and tuning are saved under `onroad.*` keys in localStorage, separate from the offroad game's `offroad.*` keys on the same `localhost:5175` origin.
 
-Much of the UI (controls list, menu notes, HUD warnings) and the sections below still describe the offroad game.
+Some of the controls list and the sections below still describe the offroad game. UI rules: `docs/UI.md`.
 
 ## Assetto Corsa tracks and cars
 

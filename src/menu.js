@@ -185,7 +185,7 @@ export class Menu {
     const col = c => sections.filter(s => (s.col || 1) === c).map(s => `
       <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
-          ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
+          ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="set-info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
           <div class="set-c">${ctl(r)}</div>
         </div>`).join('')}</div>`).join('');
     pane.innerHTML = `<div class="set-cols"><div class="set-col">${col(1)}</div><div class="set-col">${col(2)}</div></div>`;

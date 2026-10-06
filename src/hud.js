@@ -1,26 +1,43 @@
 import { capsHTML } from './input.js';
+import { MESSAGES } from './messages.js';
 
-// In-game HUD: instrument cluster (bottom right), toasts and context tips (top centre),
-// key hints + menu button (top left), optional suspension panel, telemetry and fps.
+// In-game HUD. The rules it follows are in docs/UI.md; read them before adding anything here.
+//
+// Layout: menu button + key hints (top left), telemetry / suspension panel / fps (optional), and the
+// dash (bottom right): the ticker line over the instrument cluster.
+// - The cluster shows STATE: speed, gear, rpm, a car glyph (wheel slip, diff locks, pedals), a row of
+//   indicator lamps (engine, handbrake, TC, ABS, lights, hazards, light bar, sound) and an info row
+//   (gearbox, driveline, tyres, surface). A field the player changed flashes once.
+// - The ticker shows EVENTS (hud.notify(id), texts in messages.js) and standing tips: one line, empty
+//   by default; a new line slides in from below, the old one slides up and fades.
 //
 // Cost rules: no layout reads per frame; DOM text/classes are written only when the value changes;
-// bars move with transforms; the rpm dial redraws only when the rpm moves by >= 20 rpm, on top of a
-// cached static layer; the suspension panel redraws at 20 Hz and telemetry at 10 Hz, only while shown.
+// bars move with transforms.
 
 const SPEED_UNITS = { kmh: { k: 3.6, label: 'km/h' }, mph: { k: 2.236936, label: 'mph' } };
 export const fmtPressure = (psi, unit) => unit === 'bar' ? `${(psi * 0.0689476).toFixed(2)} bar` : `${psi.toFixed(0)} psi`;
 export const speedUnit = u => SPEED_UNITS[u] || SPEED_UNITS.kmh;
 
-const AUTO_STRIP = ['P', 'R', 'N', 'D'];
-const MAN_STRIP = ['R', 'N', '1', '2', '3', '4', '5'];
-const DIAL = 156;          // css px at scale 1
 const SUSP = 216;
-const MAX_RPM = 6000;
-const A0 = Math.PI * 0.75, A1 = Math.PI * 2.25;
+const HOT = '#ff5c35';         // = --hot in ui.css (canvas drawing)
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const LIFE = { info: 2.6, warn: 3.6 };
 
-const ICON_SOUND = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor"/><path d="M11 5.5c1 .8 1 4.2 0 5M12.8 4c1.9 1.6 1.9 6.4 0 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
-const ICON_MUTED = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor"/><path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+// indicator lamps: 24 px grid, stroke = currentColor
+const svg = (p, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${p}</svg>`;
+const LAMP_ICONS = {
+  eng: svg('<path d="M7 8h3V6h5v2h1.5l2 2.5H20V9h1.5v7H20v-1.5h-1.5L16 17H9l-2-2H5v2.5H3.5v-7H5V12h2z"/>'),
+  hb: svg('<circle cx="12" cy="12" r="6.5"/><path d="M10.4 15V9h2.3a1.7 1.7 0 0 1 0 3.4h-2.3M4.2 7.5a9.5 9.5 0 0 0 0 9M19.8 7.5a9.5 9.5 0 0 1 0 9"/>'),
+  tc: '<b>TC</b>',
+  abs: '<b>ABS</b>',
+  low: svg('<path d="M10 6.5C6.5 6.5 4 9 4 12s2.5 5.5 6 5.5zM14 9l6 2M14 12.5l6 2M14 16l6 2"/>'),
+  high: svg('<path d="M10 6.5C6.5 6.5 4 9 4 12s2.5 5.5 6 5.5zM14 8.5h6.5M14 12h6.5M14 15.5h6.5"/>'),
+  haz: svg('<path d="M12 4.5 20.5 19h-17z"/><path d="M12 10 15.5 16h-7z"/>'),
+  bar: svg('<rect x="3" y="9" width="18" height="6" rx="1.5"/><path d="M8 9v6M12 9v6M16 9v6"/>'),
+  snd: svg('<path d="M4 9.5h3l4.5-3.5v12L7 14.5H4z"/><path d="M15 9.5c1 1.4 1 3.6 0 5M17.5 7.5c2.2 2.6 2.2 6.4 0 9"/>'),
+  mute: svg('<path d="M4 9.5h3l4.5-3.5v12L7 14.5H4z"/><path d="m15.5 9.5 5 5M20.5 9.5l-5 5"/>'),
+};
+const LAMP_TITLES = { eng: 'Engine', hb: 'Handbrake', tc: 'Traction control', abs: 'ABS', light: 'Headlights', haz: 'Hazard lights', bar: 'Light bar', snd: 'Sound' };
 
 export class HUD {
   constructor(root = document.getElementById('hud')) {
@@ -34,87 +51,57 @@ export class HUD {
           </button>
           <div class="hints" id="h-hints"></div>
         </div>
-        <div class="sound-pill" id="h-sound" hidden></div>
         <pre class="hud-panel telemetry" id="h-tele" hidden></pre>
-      </div>
-      <div class="hud-top">
-        <div class="toasts" id="h-toasts" aria-live="polite"></div>
-        <div class="tip" id="h-tip" hidden></div>
       </div>
       <div class="hud-fps" id="h-fps" hidden></div>
       <div class="hud-panel susp" id="h-susp" hidden>
-        <div class="panel-h"><span>Suspension &amp; tyres</span><span id="h-suspkey"></span></div>
+        <div class="panel-h"><span>Suspension and tyres</span><span id="h-suspkey"></span></div>
         <canvas id="h-suspcv"></canvas>
         <div class="panel-f"><span>load</span><span>tyre squash</span><span class="lg-travel">travel</span><span class="lg-slip">slip</span></div>
       </div>
-      <div class="cluster" id="h-cluster">
-        <div class="tells" aria-live="polite">
-          <span class="tt red" id="t-eng" hidden>ENGINE OFF</span>
-          <span class="tt red" id="t-hb" hidden>HANDBRAKE</span>
-          <span class="tt amber" id="t-abs" hidden>ABS</span>
-          <span class="tt amber" id="t-tc" hidden>TC</span>
-          <span class="tt blue" id="t-rwd" hidden>2WD</span>
-          <span class="tt green" id="t-head" hidden>LOW BEAM</span>
-          <span class="tt amber" id="t-bar" hidden>LIGHT BAR</span>
-          <span class="tt amber blink" id="t-haz" hidden>HAZARDS</span>
-        </div>
-        <div class="cl-body">
-          <div class="cl-side">
-            <div class="cl-mode"><b id="h-mode">AUTO</b><span id="h-modesub"></span></div>
-            <div class="strip" id="h-strip"></div>
-            <div class="cl-kv"><span class="k">Range</span><span class="seg2" id="h-range"><i data-v="high">HI</i><i data-v="low">LO</i></span></div>
-            <div class="cl-diffs">
-              <svg id="h-diffs" viewBox="0 0 64 72" aria-hidden="true">
-                <path class="shaft" d="M14 13H50M14 59H50M32 13V59"/>
-                <rect class="w" x="3" y="4" width="11" height="18" rx="2.5"/>
-                <rect class="w" x="50" y="4" width="11" height="18" rx="2.5"/>
-                <rect class="w" x="3" y="50" width="11" height="18" rx="2.5"/>
-                <rect class="w" x="50" y="50" width="11" height="18" rx="2.5"/>
-                <circle class="df" cx="32" cy="13" r="5.5"/>
-                <circle class="df" cx="32" cy="36" r="5.5"/>
-                <circle class="df" cx="32" cy="59" r="5.5"/>
-              </svg>
-              <div class="diff-txt"><span class="k">Diffs</span><b id="h-difftxt">Open</b></div>
-            </div>
-          </div>
-          <div class="dial" id="h-dialwrap">
-            <canvas id="h-dial"></canvas>
-            <div class="dial-c">
-              <div class="spd" id="h-spd">0</div>
-              <div class="unit" id="h-unit">km/h</div>
-            </div>
+      <div class="dash" id="h-dash">
+        <div class="ticker" id="h-ticker" aria-live="polite"></div>
+        <div class="cluster" id="h-cluster">
+          <div class="rpm"><div class="rpm-track"><i class="rpm-red" id="h-rpmred"></i><i class="rpm-fill" id="h-rpmfill"></i></div><div class="rpm-scale" id="h-rpmscale"></div></div>
+          <div class="cl-main">
             <div class="gear" id="h-gear">N</div>
-            <div class="rpmbar"><i id="h-rpmbar"></i></div>
+            <div class="spd-box"><span class="spd" id="h-spd">0</span><span class="unit" id="h-unit">km/h</span></div>
+            <svg class="car" id="h-car" viewBox="0 0 34 48" aria-hidden="true">
+              <rect class="body" x="7" y="2" width="20" height="44" rx="6"/>
+              <path class="axle" d="M7 11H27M7 37H27"/>
+              <rect class="w" x="2" y="5" width="5" height="12" rx="1.5"/><rect class="w" x="27" y="5" width="5" height="12" rx="1.5"/>
+              <rect class="w" x="2" y="31" width="5" height="12" rx="1.5"/><rect class="w" x="27" y="31" width="5" height="12" rx="1.5"/>
+              <circle class="df" cx="17" cy="11" r="2.6"/><circle class="df" cx="17" cy="24" r="2.6"/><circle class="df" cx="17" cy="37" r="2.6"/>
+            </svg>
+            <div class="pedals" title="Throttle · brake · clutch">
+              <div class="pd thr"><i id="p-thr"></i></div><div class="pd brk"><i id="p-brk"></i></div><div class="pd clu" id="p-cluwrap"><i id="p-clu"></i></div>
+            </div>
           </div>
-          <div class="pedals" title="Throttle · brake · clutch">
-            <div class="pedal"><div class="pd thr"><i id="p-thr"></i></div><b>T</b></div>
-            <div class="pedal"><div class="pd brk"><i id="p-brk"></i></div><b>B</b></div>
-            <div class="pedal" id="p-cluwrap"><div class="pd clu"><i id="p-clu"></i></div><b>C</b></div>
-          </div>
-        </div>
-        <div class="cl-foot">
-          <span id="h-psi"></span><span class="sep"></span><span id="h-surf"></span>
+          <div class="lamps" id="h-lamps">${['eng', 'hb', 'tc', 'abs', 'light', 'haz', 'bar', 'snd'].map(id => `<span class="lamp" id="l-${id}" data-s="off" title="${LAMP_TITLES[id]}">${LAMP_ICONS[id === 'light' ? 'low' : id]}</span>`).join('')}</div>
+          <div class="cl-info"><span id="h-box"></span><span id="h-drive"></span><span id="h-psi"></span><span id="h-surf"></span></div>
         </div>
       </div>`;
     const $ = id => root.querySelector('#' + id);
     this.$ = $;
     this.e = {
-      menuBtn: $('h-menubtn'), menuKey: $('h-menukey'), hints: $('h-hints'), sound: $('h-sound'),
-      toasts: $('h-toasts'), tip: $('h-tip'), fps: $('h-fps'), tele: $('h-tele'), susp: $('h-susp'), suspKey: $('h-suspkey'),
-      cluster: $('h-cluster'), mode: $('h-mode'), modeSub: $('h-modesub'), strip: $('h-strip'), range: $('h-range'),
-      diffs: [...root.querySelectorAll('#h-diffs .df')], wheels: [...root.querySelectorAll('#h-diffs .w')], diffTxt: $('h-difftxt'),
-      dial: $('h-dial'), spd: $('h-spd'), unit: $('h-unit'), gear: $('h-gear'), rpmBar: $('h-rpmbar'),
+      menuBtn: $('h-menubtn'), menuKey: $('h-menukey'), hints: $('h-hints'),
+      fps: $('h-fps'), tele: $('h-tele'), susp: $('h-susp'), suspKey: $('h-suspkey'),
+      ticker: $('h-ticker'), cluster: $('h-cluster'),
+      rpmFill: $('h-rpmfill'), rpmRed: $('h-rpmred'), rpmScale: $('h-rpmscale'),
+      gear: $('h-gear'), spd: $('h-spd'), unit: $('h-unit'),
+      wheels: [...root.querySelectorAll('#h-car .w')], diffs: [...root.querySelectorAll('#h-car .df')],
       thr: $('p-thr'), brk: $('p-brk'), clu: $('p-clu'), cluWrap: $('p-cluwrap'),
-      psi: $('h-psi'), surf: $('h-surf'),
-      tEng: $('t-eng'), tHb: $('t-hb'), tAbs: $('t-abs'), tTc: $('t-tc'), tRwd: $('t-rwd'), tHead: $('t-head'), tBar: $('t-bar'), tHaz: $('t-haz'),
+      box: $('h-box'), drive: $('h-drive'), psi: $('h-psi'), surf: $('h-surf'),
+      lamp: Object.fromEntries(['eng', 'hb', 'tc', 'abs', 'light', 'haz', 'bar', 'snd'].map(id => [id, $('l-' + id)])),
     };
-    this.dctx = this.e.dial.getContext('2d');
     this.sctx = $('h-suspcv').getContext('2d');
     this.c = {};                       // last written values
-    this.opts = { speedUnit: 'kmh', pressureUnit: 'psi', cluster: 'auto', hudScale: 1, hints: true, suspension: false, telemetry: false, fps: false };
+    this.opts = { speedUnit: 'kmh', pressureUnit: 'psi', cluster: 'auto', hudScale: 1, hints: true, suspension: false, telemetry: false, fps: false, arcade: false };
     this.device = 'kb';
-    this.toastList = [];
-    this.tipState = { key: null, rolled: 0, stuck: 0, neutral: 0, engine: 0, clear: 0, acc: 0 };
+    this.event = null;                 // the current ticker event { key, html, level, t }
+    this.hint = null;                  // the current standing tip { key, html, level }
+    this.shown = null;                 // what the ticker shows now { key, html, el }
+    this.tipState = { rolled: 0, stuck: 0, neutral: 0, engine: 0, clear: 0, acc: 0, id: null };
     this.fpsAcc = 0; this.fpsN = 0; this.suspAcc = 1; this.teleAcc = 1;
     this.soundState = 'locked';
     this.onMenu = null;
@@ -135,7 +122,7 @@ export class HUD {
     this.e.hints.hidden = !o.hints;
     this.suspAcc = this.teleAcc = 1;
     if (this.suspPrev) this.suspPrev.fill(-1);
-    this.c.spd = this.c.psi = undefined;        // units may have changed
+    this.c.spd = this.c.psi = this.c.box = undefined;        // units / options may have changed
     this.e.unit.textContent = speedUnit(o.speedUnit).label;
     this.resize();
   }
@@ -149,9 +136,6 @@ export class HUD {
     this.small = H < 560 || W < 760;
     this.root.style.setProperty('--s', s.toFixed(3));
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const dp = Math.max(32, Math.round(DIAL * s * dpr));
-    this.e.dial.width = this.e.dial.height = dp;
-    this.dialStatic = null; this.c.rpmQ = undefined;
     const sp = Math.max(32, Math.round(SUSP * s * dpr));
     const scv = this.sctx.canvas; scv.width = scv.height = sp;
     this.suspAcc = 1; if (this.suspPrev) this.suspPrev.fill(-1);
@@ -167,165 +151,160 @@ export class HUD {
       ? `<span>${k('camera')} Camera</span><span>${k('recover')} Recover</span><span>${k('shiftUp')}${k('shiftDown')} Shift</span>`
       : `<span>${k('controls')} Controls</span><span>${k('locations')} Locations</span><span>${k('camera')} Camera</span><span>${k('tuning')} Tuning</span><span>${k('recover')} Recover</span>`;
     this.e.suspKey.innerHTML = capsHTML('suspension', 'kb');
-    this.tipState.key = null;           // re-render the tip with the new prompts
-    this.setSound(this.soundState, true);
+    // key caps in the ticker follow the device
+    if (this.event) this.event.html = this.render(this.event.key, this.event.params);
+    if (this.hint) this.hint.html = this.render(this.hint.key, this.hint.params);
   }
 
-  // sound status pill: 'locked' (waiting for a gesture), 'on', 'muted', 'error'
-  setSound(state, force) {
-    if (state === this.soundState && !force) return;
+  // sound: 'locked' (waiting for a gesture), 'on', 'muted', 'error'
+  setSound(state) {
+    if (state === this.soundState) return;
+    const was = this.soundState;
     this.soundState = state;
-    const el = this.e.sound;
-    el.className = 'sound-pill ' + state;
-    if (state === 'on') { el.hidden = true; return; }
-    el.hidden = false;
-    el.innerHTML = state === 'locked' ? `${ICON_SOUND}<span>Click or press a key to turn on sound</span>`
-      : state === 'muted' ? `${ICON_MUTED}<span>Sound off</span>${capsHTML('mute', 'kb')}`
-        : `${ICON_MUTED}<span>Sound unavailable</span>`;
+    if (state === 'error' && was !== 'error') this.notify('soundError');
   }
 
-  // ------------------------------------------------------------------ toasts
-  // kind: '' | 'good' | 'warn'. html may contain <kbd> caps.
-  // key: a toast with the same key is updated in place (repeated presses of [ or L don't stack up).
-  // Newest at the bottom; at most 3 on screen.
-  toast(html, { t = 2.4, kind = '', key = html } = {}) {
-    const same = this.toastList.find(x => x.key === key && !x.leaving);
-    if (same) {
-      same.t = t;
-      if (same.html !== html) { same.html = html; same.el.innerHTML = html; }
-      same.el.className = 'toast' + (kind ? ' ' + kind : '');
-      same.el.animate?.([{ transform: 'scale(1.04)' }, { transform: 'none' }], { duration: 220, easing: 'ease-out' });
+  // ------------------------------------------------------------------ ticker
+  render(id, p = {}) {
+    const m = MESSAGES[id];
+    if (!m) { console.warn('hud: unknown message', id); return escapeHTML(id); }
+    const ep = {};
+    for (const [key, v] of Object.entries(p)) ep[key] = typeof v === 'string' ? escapeHTML(v) : v;
+    return m.text(ep, k => capsHTML(k, this.device));
+  }
+  // an event (messages.js id): replaces whatever event is showing
+  notify(id, params) {
+    const m = MESSAGES[id];
+    const level = m?.level === 'warn' ? 'warn' : 'info';
+    this.event = { key: id, params, html: this.render(id, params), level, t: LIFE[level], n: (this.event?.n || 0) + 1 };
+  }
+  // a standing tip (or null): shown while no event is
+  setHint(id, params) {
+    if (!id) { this.hint = null; return; }
+    const html = this.render(id, params);
+    if (this.hint?.key === id && this.hint.html === html) return;
+    this.hint = { key: id, params, html, level: 'hint' };
+  }
+  tickTicker(dt) {
+    if (this.event && (this.event.t -= dt) <= 0) this.event = null;
+    const want = this.event || this.hint;
+    const cur = this.shown;
+    if (cur && want && cur.key === want.key) {
+      // the same line again (a repeat, or new text for it): update in place with a short pulse
+      if (cur.html !== want.html || cur.n !== want.n) {
+        cur.html = want.html; cur.n = want.n;
+        cur.el.querySelector('.tk-t').innerHTML = want.html;
+        cur.el.animate?.([{ transform: 'translateX(calc(-3 * var(--u)))' }, { transform: 'none' }], { duration: 220, easing: 'ease-out' });
+      }
       return;
     }
-    const el = document.createElement('div');
-    el.className = 'toast' + (kind ? ' ' + kind : '');
-    el.innerHTML = html;
-    this.e.toasts.append(el);
-    this.toastList.push({ el, html, key, t, leaving: false });
-    const live = this.toastList.filter(x => !x.leaving);
-    if (live.length > 3) this.dropToast(live[0]);
-  }
-  message(text, t = 2.4, kind = '', key) { this.toast(escapeHTML(text), { t, kind, key }); }
-
-  // The drivetrain speaks in plain text with keyboard keys baked in ("press I", "(Shift)").
-  // Rewrite the known ones with key caps for the current device and give them a severity.
-  drivetrainToast(text) {
-    const k = id => capsHTML(id, this.device);
-    for (const [re, f, kind, key] of DT_MESSAGES) {
-      const m = re.exec(text);
-      if (m) { this.toast(f(k, m), { kind, key, t: kind === 'warn' ? 3.2 : 2.4 }); return; }
+    if (!cur && !want) return;
+    if (cur) {
+      const el = cur.el;
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 320);
     }
-    this.toast(escapeHTML(text));
-  }
-  dropToast(x) {
-    if (x.leaving) return;
-    x.leaving = true;
-    x.el.classList.add('out');
-    setTimeout(() => { x.el.remove(); this.toastList = this.toastList.filter(y => y !== x); }, 260);
-  }
-  tickToasts(dt) {
-    for (const x of this.toastList) if (!x.leaving && (x.t -= dt) <= 0) this.dropToast(x);
-  }
-
-  setTip(key, html) {
-    if (key === this.tipState.key) return;
-    this.tipState.key = key;
-    this.e.tip.hidden = !key;
-    if (key) this.e.tip.innerHTML = html;
+    this.shown = null;
+    if (want) {
+      const el = document.createElement('div');
+      el.className = 'tk tk-' + want.level;
+      el.innerHTML = `<i class="tk-d"></i><span class="tk-t">${want.html}</span>`;
+      this.e.ticker.append(el);
+      this.shown = { key: want.key, html: want.html, n: want.n, el };
+    }
   }
 
   // ------------------------------------------------------------------ per frame
   // ctx: { cam, paused, raw, telemetry: () => string }
   update(dt, v, view, ctx = {}) {
     const d = v.drivetrain, e = this.e, c = this.c, o = this.opts;
-    this.tickToasts(dt);
-    if (d.message && d.message !== this._lastMsg) this.drivetrainToast(d.message.text);
-    this._lastMsg = d.message;
+    if (d.message && d.message.seq !== this._msgSeq) { this._msgSeq = d.message.seq; this.notify(d.message.id, d.message.params); }
+    this.tickTicker(dt);
 
-    // cluster layout
+    // layout
     const compact = o.cluster === 'compact' || (o.cluster === 'auto' && (ctx.cam === 'cockpit' || this.small));
-    if (compact !== c.compact) { c.compact = compact; e.cluster.classList.toggle('compact', compact); c.rpmQ = undefined; }
+    if (compact !== c.compact) { c.compact = compact; e.cluster.classList.toggle('compact', compact); }
 
-    // gearbox mode + selector strip
-    const manual = d.mode === 'manual';
-    const modeKey = manual ? (d.clutchAssist ? 'mac' : 'm') : 'a';
-    if (modeKey !== c.mode) {
-      c.mode = modeKey; c.stripIdx = undefined;
-      e.mode.textContent = manual ? 'MANUAL' : 'AUTO';
-      e.modeSub.textContent = manual ? (d.clutchAssist ? 'auto-clutch' : 'clutch pedal') : '6-speed';
-      e.strip.innerHTML = (manual ? MAN_STRIP : AUTO_STRIP).map(g => `<i>${g}</i>`).join('');
-      e.cluWrap.classList.toggle('off', !(manual && !d.clutchAssist));
+    // rpm scale follows the engine: 0 .. the limiter rounded up to 1000 rpm
+    const E = v.P.engine;
+    if (E !== c.E || E.limiterRpm !== c.lim || E.redlineRpm !== c.red) {
+      c.E = E; c.lim = E.limiterRpm; c.red = E.redlineRpm;
+      c.maxRpm = Math.ceil((E.limiterRpm + 100) / 1000) * 1000;
+      e.rpmRed.style.left = (E.redlineRpm / c.maxRpm * 100).toFixed(2) + '%';
+      let ticks = '';
+      for (let r = 0; r <= c.maxRpm; r += 1000) ticks += `<i style="left:${(r / c.maxRpm * 100).toFixed(2)}%"${r >= E.redlineRpm ? ' class="hot"' : ''}>${r / 1000}</i>`;
+      e.rpmScale.innerHTML = ticks;
+      c.rpmQ = undefined;
     }
-    const stripIdx = manual ? d.manualGear + 1 : AUTO_STRIP.indexOf(d.selector);
-    if (stripIdx !== c.stripIdx) {
-      if (c.stripIdx !== undefined && e.strip.children[c.stripIdx]) e.strip.children[c.stripIdx].className = '';
-      if (e.strip.children[stripIdx]) e.strip.children[stripIdx].className = 'on';
-      c.stripIdx = stripIdx;
-    }
+    const rpm = Math.max(0, d.rpm);
+    const q = Math.round(clamp(rpm / c.maxRpm, 0, 1) * 200);
+    if (q !== c.rpmQ) { c.rpmQ = q; e.rpmFill.style.transform = `scaleX(${q / 200})`; }
+    const zone = rpm >= E.redlineRpm ? 'red' : rpm >= E.redlineRpm - 600 ? 'near' : '';
+    if (zone !== c.rpmZone) { c.rpmZone = zone; e.rpmFill.className = 'rpm-fill ' + zone; }
+
+    // gear + speed
     const gear = d.gearLabel();
     if (gear !== c.gear) { c.gear = gear; e.gear.textContent = gear; }
     const shifting = !!d.shift || d.grind > 0;
     if (shifting !== c.shifting) { c.shifting = shifting; e.gear.classList.toggle('shifting', shifting); }
-
-    // transfer case + diffs
-    if (d.range !== c.range) { c.range = d.range; e.range.dataset.v = d.range; }
-    // a car without a transfer case (fixed RWD) has no range to show
-    if (d.fixedRwd !== c.fixedRwd) { c.fixedRwd = d.fixedRwd; e.range.parentElement.hidden = !!d.fixedRwd; }
-    const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0);
-    if (locks !== c.locks) {
-      c.locks = locks;
-      e.diffs[0].classList.toggle('locked', d.frontLock);
-      e.diffs[1].classList.toggle('locked', d.centerLock);
-      e.diffs[2].classList.toggle('locked', d.rearLock);
-      const names = [d.centerLock && 'Centre', d.frontLock && 'Front', d.rearLock && 'Rear'].filter(Boolean);
-      // short enough for one line; the icon shows exactly which diff is locked
-      e.diffTxt.textContent = names.length === 3 ? 'All locked' : names.length === 2 ? names.join(' + ').replace('Centre', 'Ctr').replace('+ Rear', '+ rear').replace('+ Front', '+ front') : names[0] || 'Open';
-      e.diffTxt.classList.toggle('locked', names.length > 0);
-    }
-    for (let i = 0; i < 4; i++) {
-      const w = v.wheels[i];
-      const st = !w.contact ? 'w air' : (w.slipNorm || 0) > 0.95 ? 'w slip' : (w.slipNorm || 0) > 0.7 ? 'w warn' : 'w';
-      if (st !== c['w' + i]) { c['w' + i] = st; e.wheels[i].setAttribute('class', st); }
-    }
-
-    // speed + rpm
     const su = speedUnit(o.speedUnit);
     const spd = Math.round(Math.abs(v.speed) * su.k);
     if (spd !== c.spd) { c.spd = spd; e.spd.textContent = spd; }
-    if (!compact) this.drawDial(Math.max(0, d.rpm), v.P.engine);
-    else this.rpmBar(Math.max(0, d.rpm), v.P.engine);
+
+    // car glyph: wheel slip and diff locks
+    for (let i = 0; i < 4; i++) {
+      const w = v.wheels[i];
+      const st = !w.contact ? 'w air' : (w.slipNorm || 0) > 0.95 ? 'w slip' : (w.slipNorm || 0) > 0.7 ? 'w edge' : 'w';
+      if (st !== c['w' + i]) { c['w' + i] = st; e.wheels[i].setAttribute('class', st); }
+    }
+    // the centre and front diff markers exist only on a car with a transfer case
+    const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0) | (d.fixedRwd ? 8 : 0);
+    if (locks !== c.locks) {
+      c.locks = locks;
+      const cls = (on, show) => !show ? 'df none' : on ? 'df locked' : 'df';
+      e.diffs[0].setAttribute('class', cls(d.frontLock, !d.fixedRwd));
+      e.diffs[1].setAttribute('class', cls(d.centerLock, !d.fixedRwd));
+      e.diffs[2].setAttribute('class', cls(d.rearLock, true));
+    }
 
     // pedals
+    const manual = d.mode === 'manual';
     this.bar(e.thr, 'thr', v.ctl.throttle);
     this.bar(e.brk, 'brk', Math.max(v.ctl.brake, v.ctl.handbrake));
     this.bar(e.clu, 'clu', manual ? clamp(d.clutchPedal / 0.8, 0, 1) : 0);
+    const pedal = manual && !d.clutchAssist;
+    if (pedal !== c.pedal) { c.pedal = pedal; e.cluWrap.classList.toggle('off', !pedal); }
 
-    // footer: tyres, surface, warning lamps
-    const psi = fmtPressure(v.pressure, o.pressureUnit);
-    if (psi !== c.psi) { c.psi = psi; e.psi.textContent = 'Tyres ' + psi; }
+    // lamps
+    const L = e.lamp;
+    this.lampState(L.eng, 'eng', d.running ? 'off' : d.cranking ? 'blink' : 'warn');
+    this.lampState(L.hb, 'hb', v.ctl.handbrake > 0.5 ? 'warn' : 'off');
+    this.lampState(L.tc, 'tc', !v.tc ? 'off' : v.tcActive > 0 ? 'warn' : 'on', true);
+    this.lampState(L.abs, 'abs', !v.abs ? 'off' : v.absActive > 0 ? 'warn' : 'on', true);
+    const head = view.lights.head;
+    if (head !== c.headIcon) { const first = c.headIcon === undefined; c.headIcon = head; L.light.innerHTML = LAMP_ICONS[head === 2 ? 'high' : 'low']; if (!first) this.flash(L.light); }
+    this.lampState(L.light, 'light', head ? 'on' : 'off');
+    this.lampState(L.haz, 'haz', view.lights.hazard ? 'blink' : 'off', true);
+    const hasBar = !!view.features?.lightBar;
+    if (hasBar !== c.hasBar) { c.hasBar = hasBar; L.bar.hidden = !hasBar; }
+    this.lampState(L.bar, 'bar', view.lights.bar ? 'on' : 'off', true);
+    const snd = this.soundState;
+    if (snd !== c.sndIcon) { const first = c.sndIcon === undefined; c.sndIcon = snd; L.snd.innerHTML = LAMP_ICONS[snd === 'on' ? 'snd' : 'mute']; if (!first) this.flash(L.snd); }
+    this.lampState(L.snd, 'snd', snd === 'on' ? 'off' : snd === 'muted' ? 'on' : snd === 'locked' ? 'blink' : 'warn');
+
+    // info row (fields the player changes flash)
+    this.field(e.box, 'box', manual ? (d.clutchAssist ? 'Manual' : 'Manual · pedal') : (o.arcade ? 'Auto · arcade' : 'Auto'));
+    const drive = d.fixedRwd ? { welded: 'Welded diff', lsd: 'LSD', open: 'Open diff' }[d.rearDiff] || 'RWD'
+      : `${d.rwd ? '2WD' : '4WD'} · ${d.range === 'low' ? 'Low' : 'High'}`;
+    this.field(e.drive, 'drive', drive);
+    this.field(e.psi, 'psi', fmtPressure(v.pressure, o.pressureUnit));
     let surf = 'Airborne';
     for (const w of v.wheels) if (w.contact) { surf = w.surf?.name || 'Ground'; break; }
     if (surf !== c.surf) { c.surf = surf; e.surf.textContent = surf; }
-    const eng = d.running ? '' : d.cranking ? 'CRANKING' : d.stalled ? 'STALLED' : 'ENGINE OFF';
-    if (eng !== c.eng) { c.eng = eng; e.tEng.hidden = !eng; if (eng) { e.tEng.textContent = eng; e.tEng.className = 'tt ' + (d.cranking ? 'amber' : 'red'); } }
-    this.lamp(e.tHb, 'hb', v.ctl.handbrake > 0.5);
-    const abs = !v.abs ? 'ABS OFF' : v.absActive > 0 ? 'ABS' : '';
-    if (abs !== c.abs) { c.abs = abs; e.tAbs.hidden = !abs; if (abs) e.tAbs.textContent = abs; }
-    this.lamp(e.tRwd, 'rwd', d.rwd && !d.fixedRwd);
-    const tc = !v.tc ? 'TC OFF' : v.tcActive > 0 ? 'TC' : '';
-    if (tc !== c.tc) { c.tc = tc; e.tTc.hidden = !tc; if (tc) e.tTc.textContent = tc; }
-    const head = view.lights.head;
-    if (head !== c.head) {
-      c.head = head; e.tHead.hidden = !head;
-      e.tHead.textContent = head === 2 ? 'HIGH BEAM' : 'LOW BEAM';
-      e.tHead.className = 'tt ' + (head === 2 ? 'blue' : 'green');
-    }
-    this.lamp(e.tBar, 'bar', view.lights.bar);
-    this.lamp(e.tHaz, 'haz', view.lights.hazard);
 
-    // context tips (4 Hz)
-    if (ctx.paused) this.setTip(null);
-    else if ((this.tipState.acc += dt) > 0.25) { this.updateTips(this.tipState.acc, v, ctx.raw || v.ctl); this.tipState.acc = 0; }
+    // standing tips (4 Hz)
+    if (ctx.paused) this.setHint(null);
+    else if ((this.tipState.acc += dt) > 0.25) { this.tips(this.tipState.acc, v, ctx.raw || v.ctl); this.tipState.acc = 0; }
 
     // optional panels
     if (o.suspension && (this.suspAcc += dt) > 0.05) { this.suspAcc = 0; this.drawSuspension(v); }
@@ -340,17 +319,29 @@ export class HUD {
     this.c[k] = q;
     el.style.transform = `scaleY(${q / 100})`;
   }
-  rpmBar(rpm, E) {
-    const q = Math.round(clamp(rpm / MAX_RPM, 0, 1) * 100);
-    if (q !== this.c.rpmQ) { this.c.rpmQ = q; this.e.rpmBar.style.transform = `scaleX(${q / 100})`; }
-    const zone = rpm >= E.redlineRpm ? 'red' : rpm >= E.redlineRpm - 700 ? 'amber' : '';
-    if (zone !== this.c.rpmZone) { this.c.rpmZone = zone; this.e.rpmBar.className = zone; }
+  // a lamp: 'off' (dim) | 'on' (white) | 'warn' (hot) | 'blink' (hot, blinking). flash: the player toggles it
+  lampState(el, k, s, flash = false) {
+    const key = 'L' + k;
+    if (s === this.c[key]) return;
+    const first = this.c[key] === undefined;
+    this.c[key] = s;
+    el.dataset.s = s;
+    if (flash && !first) this.flash(el);
   }
-  lamp(el, k, on) { if (on !== this.c[k]) { this.c[k] = on; el.hidden = !on; } }
+  // an info field: text, and a flash when it changes after the first frame
+  field(el, k, text) {
+    const key = 'F' + k;
+    if (text === this.c[key]) return;
+    const first = this.c[key] === undefined;
+    this.c[key] = text;
+    el.textContent = text;
+    if (!first) this.flash(el);
+  }
+  flash(el) { el.animate?.([{ background: 'rgba(255,255,255,0.22)', color: '#fff' }, { background: 'rgba(255,255,255,0)' }], { duration: 650, easing: 'ease-out' }); }
 
-  // ------------------------------------------------------------------ tips
-  updateTips(dt, v, raw) {
-    const d = v.drivetrain, ts = this.tipState, k = id => capsHTML(id, this.device);
+  // ------------------------------------------------------------------ standing tips
+  tips(dt, v, raw) {
+    const d = v.drivetrain, ts = this.tipState;
     const sp = Math.abs(v.speed);
     const thr = raw.throttle || 0;
     const inGear = d.mode === 'manual' ? d.manualGear !== 0 : (d.selector === 'D' || d.selector === 'R');
@@ -359,65 +350,15 @@ export class HUD {
     const engine = grow('engine', !d.running && !d.cranking);
     const neutral = grow('neutral', d.running && !inGear && thr > 0.5 && (d.mode === 'manual' || sp > 0.8));
     const stuck = grow('stuck', d.running && inGear && thr > 0.6 && sp < 0.6 && v.up.y > 0.35);
-    let key = null, html = '';
-    if (rolled > 1.0) { key = 'rolled'; html = `Rolled over. Press ${k('recover')} to put the car back on its wheels.`; }
-    else if (engine > 0.6) { key = 'engine'; html = `Engine ${d.stalled ? 'stalled' : 'off'}. Press ${k('engineStart')} to start it.`; }
-    else if (neutral > 1.2) { key = 'neutral'; html = d.mode === 'manual' ? `Gearbox in neutral. Press ${k('shiftUp')} for 1st, ${k('shiftDown')} for reverse.` : `Selector in ${d.selector}. Press ${k('shiftUp')} for Drive${d.selector === 'P' ? ` (reverse: ${k('shiftUp')} once)` : ''}.`; }
-    else if (stuck > 3) {
-      const s = [];
-      if (d.range === 'high') s.push(`${k('range')} low range`);
-      if (!d.centerLock) s.push(`${k('centreLock')} centre lock`);
-      if (!(d.rearLock && d.frontLock)) s.push(`${k('lockers')} lockers`);
-      key = 'stuck:' + s.length;
-      html = `Stuck? ${s.length ? 'Try ' + s.join(', ') + ', or' : 'Pick another line, or'} ${k('recover')} to recover.`;
-    }
-    if (!key && ts.key) { if ((ts.clear += dt) < 0.75) return; }   // hysteresis: don't flicker
-    ts.clear = 0;
-    this.setTip(key, html);
-  }
-
-  // ------------------------------------------------------------------ rpm dial
-  drawDial(rpm, E) {
-    const q = Math.round(rpm / 20);
-    if (q === this.c.rpmQ) return;
-    this.c.rpmQ = q;
-    const g = this.dctx, px = this.e.dial.width, k = px / DIAL;
-    const cx = DIAL / 2, cy = DIAL / 2, r = DIAL / 2 - 9;
-    const ang = x => A0 + (A1 - A0) * clamp(x, 0, MAX_RPM) / MAX_RPM;
-    if (!this.dialStatic) {
-      const s = document.createElement('canvas');
-      s.width = s.height = px;
-      const h = s.getContext('2d');
-      h.scale(k, k);
-      h.lineWidth = 7;
-      h.strokeStyle = 'rgba(255,255,255,0.11)';
-      h.beginPath(); h.arc(cx, cy, r, A0, A1); h.stroke();
-      h.strokeStyle = 'rgba(255,90,69,0.6)';
-      h.beginPath(); h.arc(cx, cy, r, ang(E.redlineRpm), A1); h.stroke();
-      h.lineCap = 'round';
-      for (let x = 0; x <= MAX_RPM; x += 500) {
-        const a = ang(x), major = x % 1000 === 0;
-        const r0 = r - (major ? 15 : 11), r1 = r - 7;
-        h.strokeStyle = x >= E.redlineRpm ? 'rgba(255,110,90,0.9)' : major ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
-        h.lineWidth = major ? 1.8 : 1.2;
-        h.beginPath(); h.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); h.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); h.stroke();
-        if (major) {
-          h.fillStyle = x >= E.redlineRpm ? 'rgba(255,120,100,0.95)' : 'rgba(255,255,255,0.62)';
-          h.font = '600 10.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
-          h.textAlign = 'center'; h.textBaseline = 'middle';
-          h.fillText(String(x / 1000), cx + Math.cos(a) * (r - 25), cy + Math.sin(a) * (r - 25));
-        }
-      }
-      this.dialStatic = s;
-    }
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, px, px);
-    g.drawImage(this.dialStatic, 0, 0);
-    g.setTransform(k, 0, 0, k, 0, 0);
-    g.lineWidth = 7;
-    g.lineCap = 'butt';
-    g.strokeStyle = rpm >= E.redlineRpm ? '#ff5a45' : rpm >= E.redlineRpm - 700 ? '#ffb347' : '#f4f6f8';
-    g.beginPath(); g.arc(cx, cy, r, A0, ang(rpm)); g.stroke();
+    let id = null, p;
+    if (this.soundState === 'locked') id = 'soundLocked';
+    else if (rolled > 1.0) id = 'tipRolled';
+    else if (engine > 0.6) { id = 'tipEngine'; p = { stalled: d.stalled }; }
+    else if (neutral > 1.2) { id = 'tipNeutral'; p = { manual: d.mode === 'manual', sel: d.selector }; }
+    else if (stuck > 3) { id = 'tipStuck'; p = { offroad: !d.fixedRwd }; }
+    if (!id && ts.id) { if ((ts.clear += dt) < 0.75) return; }   // hysteresis: don't flicker
+    ts.clear = 0; ts.id = id;
+    this.setHint(id, p);
   }
 
   // ------------------------------------------------------------------ suspension panel
@@ -446,7 +387,7 @@ export class HUD {
     g.strokeStyle = 'rgba(255,255,255,0.22)';
     g.lineWidth = 2.5;
     g.beginPath(); g.moveTo(62, 70); g.lineTo(178, 70); g.moveTo(62, 172); g.lineTo(178, 172); g.moveTo(120, 70); g.lineTo(120, 172); g.stroke();
-    g.font = '600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+    g.font = '500 12px Geist, ui-sans-serif, system-ui, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i], p = w.axle.p;
@@ -455,7 +396,7 @@ export class HUD {
       const [x, y] = pos[i];
       const slip = Math.min(1, w.slipNorm || 0);
       const load = Math.min(1, (w.FnAvg || 0) / 12000);
-      const col = !w.contact ? 'rgba(140,140,140,0.55)' : slip > 0.95 ? '#ff5a45' : slip > 0.7 ? '#ffb347' : '#6fdc8c';
+      const col = !w.contact ? 'rgba(140,140,140,0.4)' : slip > 0.95 ? HOT : slip > 0.7 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
       g.save();
       g.translate(x, y);
       g.rotate(w.steer);
@@ -469,7 +410,7 @@ export class HUD {
       const bx = x + (w.side < 0 ? -28 : 21);
       g.fillStyle = 'rgba(255,255,255,0.14)';
       g.fillRect(bx, y - 22, 7, 44);
-      g.fillStyle = f > 0.9 || f < 0.05 ? '#ff6a4a' : '#8cc8ff';
+      g.fillStyle = f > 0.9 || f < 0.05 ? HOT : 'rgba(255,255,255,0.7)';
       g.fillRect(bx, y + 22 - 44 * f, 7, 44 * f);
       const ty = i < 2 ? y - 46 : y + 36;
       g.fillStyle = 'rgba(255,255,255,0.92)';
@@ -478,7 +419,7 @@ export class HUD {
       g.fillText(`${Math.max(0, w.pen * 100).toFixed(1)} cm`, x, ty + 14);
     }
     g.fillStyle = 'rgba(255,255,255,0.6)';
-    g.font = '600 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+    g.font = '500 11px Geist, ui-sans-serif, system-ui, sans-serif';
     g.fillText(`${v.indep ? 'susp roll' : 'axle twist'}  F ${(v.axleRoll(0) * 57.3).toFixed(1)}°  R ${(v.axleRoll(1) * 57.3).toFixed(1)}°`, 120, 121);
   }
 
@@ -498,35 +439,6 @@ export class HUD {
     return s;
   }
 }
-
-// [pattern, html(k, match), kind, key]. Anything not listed is shown as plain text.
-const DT_MESSAGES = [
-  [/^Engine is already running/, k => `Engine is already running · ${k('engineStop')} switches it off`, '', 'engine'],
-  [/^In gear: hold the clutch/, k => `In gear: hold the clutch ${k('clutch')} or select neutral, then ${k('engineStart')}`, 'warn', 'engine'],
-  [/^Engine did not start/, () => 'Engine did not start: select N or P, or press the clutch', 'warn', 'engine'],
-  [/^Engine stalled/, k => `Engine stalled · ${k('engineStart')} to restart`, 'warn', 'engine'],
-  [/^Starting/, () => 'Starting…', '', 'engine'],
-  [/^Grind!/, k => `Grind! Use the clutch ${k('clutch')} or match the revs`, 'warn', 'shift'],
-  [/^Too fast for reverse/, () => 'Too fast for reverse', 'warn', 'shift'],
-  [/^Stop to change transfer range/, () => 'Stop the car to change the transfer range', 'warn', 'range'],
-  [/^Auto clutch OFF/, k => `Auto-clutch off · hold ${k('clutch')} for the clutch`, '', 'gearbox'],
-  [/^Auto clutch ON/, () => 'Auto-clutch on', 'good', 'gearbox'],
-  [/^Manual 5-speed \(clutch pedal/, k => `Manual 5-speed · clutch pedal on ${k('clutch')}`, '', 'gearbox'],
-  [/^Manual 5-speed/, () => 'Manual 5-speed · auto-clutch', '', 'gearbox'],
-  [/^Automatic/, () => 'Automatic 6-speed', '', 'gearbox'],
-  [/^LOW range engaged/, () => 'Low range engaged', 'good', 'range'],
-  [/^HIGH range engaged/, () => 'High range engaged', '', 'range'],
-  [/^Centre diff LOCKED/, () => 'Centre diff locked', 'good', 'centre'],
-  [/^Centre diff open/, () => 'Centre diff open', '', 'centre'],
-  [/^Rear locker ON/, () => 'Rear locker on', 'good', 'lockers'],
-  [/^Front \+ rear lockers ON/, () => 'Front and rear lockers on', 'good', 'lockers'],
-  [/^Axle lockers off/, () => 'Axle lockers off', '', 'lockers'],
-  [/^2WD/, () => '2WD: rear-wheel drive', '', 'rwd'],
-  [/^4WD/, () => '4WD: all wheels driven', 'good', 'rwd'],
-  [/^Select 4WD before LOW|^RWD only in HIGH/, k => `2WD works in HIGH range only · ${k('rwd')} for 4WD first`, 'warn', 'rwd'],
-  [/^Slow down to change 2WD/, () => 'Slow down below 30 km/h to change 2WD / 4WD', 'warn', 'rwd'],
-  [/^Centre lock needs 4WD/, k => `Centre lock needs 4WD · ${k('rwd')}`, 'warn', 'centre'],
-];
 
 export function escapeHTML(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
