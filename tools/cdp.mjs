@@ -4,7 +4,7 @@
 //
 // 1. Start Chrome once (real GPU, rAF not throttled):
 //    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9333 \
-//      --user-data-dir=/tmp/offroad-chrome --no-first-run about:blank &
+//      --user-data-dir=/tmp/onroad-chrome --no-first-run about:blank &
 // 2. node tools/cdp.mjs steps.json      (CDP_PORT=9334 node ... to talk to a Chrome on another port)
 //    steps: [{ "viewport": [w, h, dpr?, mobile?] }, { "nav": "http://localhost:5174/" }, { "wait": ms },
 //            { "eval": "js expression (awaited)" }, { "key": { "code": "KeyE", "key": "e", "vk": 69 } },

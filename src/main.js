@@ -392,6 +392,7 @@ async function main() {
     game.redraw = 3;
   }
   const menu = new Menu({
+    carName: P.name,
     locations: teleports,
     device: () => input.device,
     get(key) {
@@ -441,7 +442,7 @@ async function main() {
   game.setPaused = setPaused;
   hud.onMenu = () => menu.open();
 
-  // pause when the window loses focus (setting), so the truck doesn't roll away unattended
+  // pause when the window loses focus (setting), so the car doesn't roll away unattended
   let started = false;
   const autoPause = () => { if (started && settings.get('autoPause') && !menu.blocking) menu.open(); };
   window.addEventListener('blur', autoPause);

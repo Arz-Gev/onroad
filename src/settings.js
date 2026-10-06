@@ -1,8 +1,8 @@
 // Player settings, persisted in localStorage. Every storage access is wrapped: private windows,
 // blocked site data or sandboxed frames can throw, and the game must still run with the defaults.
 
-const KEY = 'offroad.settings.v1';
-const INTRO_KEY = 'offroad.introSeen.v1';
+const KEY = 'onroad.settings.v1';
+const INTRO_KEY = 'onroad.introSeen.v1';
 
 export const DEFAULTS = {
   gearbox: 'manual',        // 'auto' | 'manual'

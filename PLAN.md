@@ -2,7 +2,7 @@
 
 Goal: a JDM touge drifting game (mountain pass, night runs, RWD cars, handbrake entries, drift scoring), built on the Offroad Defender engine.
 
-**Starting point:** a full copy of `Arz-Gev/offroad` at commit `6a07292` (2026-10-06), not a fork, with no shared history. The game runs as-is (`npm run dev`, port 5175; `npm run simtest` passes), so it still drives the Defender on the offroad map. Each step below replaces a piece while the game keeps running. `DEVNOTES.md` is the offroad notes, kept because the conventions, traps and testing workflow still apply. The old player task list is in `docs/offroad-TASKS.md`. `reference.webp` (the Defender photo) was left out; comments in `truckBody.js`, `truckDims.js` and `truckModel.js` still mention it.
+**Starting point:** a full copy of `Arz-Gev/offroad` at commit `6a07292` (2026-10-06), not a fork, with no shared history. The game runs (`npm run dev`, port 5175; `npm run simtest` passes). It now starts with the Silvia S15 on the Ebisu North track; `?car=defender` and `?map=offroad` bring back the Defender and the offroad map. Each step below replaces a piece while the game keeps running. `DEVNOTES.md` is the offroad notes, kept because the conventions, traps and testing workflow still apply. The old player task list is in `docs/offroad-TASKS.md`. `reference.webp` (the Defender photo) was left out; comments in `truckBody.js`, `truckDims.js` and `truckModel.js` still mention it.
 
 ## What carries over
 

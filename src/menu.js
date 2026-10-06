@@ -23,7 +23,7 @@ const SECTIONS = [
     row('autoClutch', 'Auto-clutch', 'switch', { hot: 'autoClutch', note: 'Off: hold Shift for the clutch.' }),
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
     row('handbrake', 'Handbrake', 'seg', { options: [['hold', 'Hold'], ['toggle', 'Toggle'], ['auto', 'Auto']], note: 'Hold: while the key is down. Toggle: press on, press off. Auto: a short tap toggles, a long press holds.' }),
-    row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the truck right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the truck can still slide or spin.' }),
+    row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the wheels at speed, from the grip under the car right now (surface, tyre pressure, grip). Strong: a little past the grip limit (1.2×). Light: well past it (1.6×), dose it by tapping. Off: full lock at any speed. Short taps always give small angles. It only picks the angle: the car can still slide or spin.' }),
     row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower pressure: bigger footprint, more grip off-road.' }),
   ] },
   { title: 'View', rows: [
@@ -68,7 +68,7 @@ const GFX_SECTIONS = [
   ] },
   { title: 'Lighting and effects', rows: [
     row('gShadows', 'Shadows', 'seg', { options: [['off', 'Off'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High'], ['ultra', 'Ultra']], note: 'Sun shadow sharpness and distance.' }),
-    row('gSSAO', 'Ambient occlusion', 'seg', { options: [['off', 'Off'], ['low', 'Low'], ['high', 'High']], note: 'SSAO: contact shading in corners, under the truck and between rocks. About 1–2 ms.' }),
+    row('gSSAO', 'Ambient occlusion', 'seg', { options: [['off', 'Off'], ['low', 'Low'], ['high', 'High']], note: 'SSAO: contact shading in corners, under the car and along kerbs and walls. About 1–2 ms.' }),
     row('gAA', 'Anti-aliasing', 'seg', { options: [['off', 'Off'], ['fxaa', 'FXAA'], ['msaa2', 'MSAA 2×'], ['msaa4', 'MSAA 4×']], note: 'MSAA is sharper, FXAA is cheaper.' }),
     row('gBloom', 'Bloom', 'switch', { note: 'Glow around lamps and the sun.' }),
   ] },
@@ -113,7 +113,7 @@ export class Menu {
     r.innerHTML = `
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-title">
         <header class="sheet-head">
-          <div class="titles"><div class="eyebrow">Offroad · Defender 110</div><h1 id="m-title">Paused</h1></div>
+          <div class="titles"><div class="eyebrow">Onroad · ${this.api.carName}</div><h1 id="m-title">Paused</h1></div>
           <div class="head-actions">
             <button class="btn" type="button" data-act="recover">Recover <span class="kc" data-cap="recover"></span></button>
             <button class="btn primary" type="button" data-act="resume">Resume <span class="kc" data-cap="menu"></span></button>
@@ -452,11 +452,11 @@ export class Menu {
     const startCap = dev === 'pad' ? '<kbd class="cap pad pad-a">A</kbd>' : '<kbd class="cap">Enter</kbd>';
     this.introRoot.innerHTML = `
       <div class="card intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
-        <div class="eyebrow">Offroad · Defender 110 V8</div>
-        <h1 id="intro-title">Take it off the road</h1>
-        <p class="lead">A solid-axle 4×4 sandbox with a proving ground. The automatic gearbox is ready; here are the essentials.</p>
+        <div class="eyebrow">Onroad · ${this.api.carName}</div>
+        <h1 id="intro-title">Hang the tail out</h1>
+        <p class="lead">Rear-wheel drive on a real track. The manual gearbox with auto-clutch is ready; here are the essentials.</p>
         <div class="intro-keys">${rows.map(([c, t]) => `<div class="ik">${c}</div><div class="it">${t}</div>`).join('')}</div>
-        <div class="callout"><b>Hard obstacle?</b> Stop, press ${k('range')} for low range, then ${k('centreLock')} and ${k('lockers')} to lock the diffs.${dev === 'pad' ? '' : ` ${k('pressureDown')} airs the tyres down.`}</div>
+        <div class="callout"><b>Drifting:</b> turn in, pull ${k('handbrake')} to kick the rear out, then catch it with counter-steer and hold the slide on the throttle. ${k('shiftUp')} ${k('shiftDown')} change gear.</div>
         <div class="intro-foot">
           <span class="fine">${dev === 'pad' ? `${k('menu')} opens the menu at any time.` : `${k('controls')} shows every control at any time.`}</span>
           <button class="btn primary big" type="button" data-act="start">Start driving ${startCap}</button>

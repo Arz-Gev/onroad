@@ -8,9 +8,9 @@ import './tuning.css';
 // still drive. Every change goes straight into the physics (Vehicle.retune); the readouts show what it
 // does to the truck (ride frequency, damping, clearance and angles, axle loads, gear speeds, 0-100).
 //
-// The setup, the saved setups and the panel state live in localStorage (offroad.tuning.v1).
+// The setup, the saved setups and the panel state live in localStorage (onroad.tuning.v1).
 
-const KEY = 'offroad.tuning.v1';
+const KEY = 'onroad.tuning.v1';
 const DEG = Math.PI / 180;
 const get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 const set = (o, path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
