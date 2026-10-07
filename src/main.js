@@ -13,11 +13,12 @@ import { buildUndergrowth } from './world/undergrowth.js';
 import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
-import { buildTrack } from './world/track.js';
+import { buildTrack, buildFlat } from './world/track.js';
 import { makeDefenderParams } from './vehicle/params.js';
 import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
+import { Recorder } from './recorder.js';
 import { Vehicle } from './vehicle/Vehicle.js';
 import { buildTruck } from './vehicle/truckModel.js';
 import { VehicleView } from './vehicle/vehicleView.js';
@@ -88,7 +89,7 @@ async function main() {
   const pipeline = new RenderPipeline(renderer, scene, camera);
 
   // ?map=offroad brings back the offroad world; the default is the Ebisu track (AC conversion, world/track.js),
-  // without its trees unless ?trees=1
+  // without its trees unless ?trees=1; ?map=flat is an endless flat asphalt pad for testing the car
   const params = new URLSearchParams(location.search);
   const trackMode = params.get('map') !== 'offroad';
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -100,7 +101,8 @@ async function main() {
   let terrain, terrainView = null, grass, water = null, props, trees, undergrowth = null, track = null, spawn;
   if (trackMode) {
     setLoading('Loading the track…', 0.3); await frame();
-    track = await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
+    track = params.get('map') === 'flat' ? buildFlat({ RAPIER, world, colliderSurface })
+      : await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
     scene.add(track.group);
     terrain = track.terrain;
     spawn = track.spawn;
@@ -161,6 +163,15 @@ async function main() {
   const rig = new CameraRig(camera, terrain);
   const input = new Input(canvas);
   const hud = new HUD();
+  const recorder = new Recorder({ hudRoot: hud.root, meta: () => {
+    const P = vehicle.P, d = vehicle.drivetrain;
+    return {
+      car: P.name, map: params.get('map') || 'ebisu', gearbox: d.mode, autoClutch: d.clutchAssist, rearDiff: d.rearDiff,
+      tc: vehicle.tc, abs: vehicle.abs, steerAssist: settings.get('steerAssist'), pressure: vehicle.pressure,
+      suspension: P.axles.map(a => ({ name: a.name, k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel })),
+      steer: P.steer, tire: { radius: P.tire.radius, width: P.tire.width },
+    };
+  } });
   const audio = new GameAudio();
   const settings = new Settings();
   const dust = new Dust(scene);
@@ -312,6 +323,7 @@ async function main() {
     },
     uiAccent: uiColor, uiCool: uiColor, uiHot: uiColor,
     uiGlass: () => applyUi(),
+    recorder: v => recorder.setEnabled(v),
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
@@ -389,8 +401,9 @@ async function main() {
     suspension: () => toggle('suspension'),
     telemetry: () => toggle('telemetry'),
     tuning: () => tuning.toggle(),
+    record: () => recorder.toggle(),
   };
-  input.onAction = id => { if (ACTIONS[id]) ACTIONS[id](); };
+  input.onAction = id => { if (ACTIONS[id]) { if (id !== 'record') recorder.event(id); ACTIONS[id](); } };
   game.action = id => input.onAction(id);
 
   // ---------------------------------------------------------------- pause menu + welcome card
@@ -448,6 +461,7 @@ async function main() {
     onPause: setPaused,
   });
   game.menu = menu;
+  game.recorder = recorder;
   Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), notify, redraw: () => { game.redraw = 3; } });
   colliderView.setEnabled(!!tuning.state.ui.overlay);
   game.setPaused = setPaused;
@@ -509,6 +523,7 @@ async function main() {
         prevPos.copy(curPos); prevQ.copy(curQ);
         vehicle.step(H, raw);
         world.step();
+        recorder.step(H, raw, vehicle);
         const t = vehicle.body.translation(), q = vehicle.body.rotation();
         curPos.set(t.x, t.y, t.z); curQ.set(q.x, q.y, q.z, q.w);
         trees.updatePhysics(t.x, t.z);

@@ -47,6 +47,7 @@ export const BINDINGS = [
   { id: 'mute', group: 'Game', label: 'Sound on / off', codes: ['KeyV'], keys: ['V'] },
   { id: 'suspension', group: 'Game', label: 'Suspension and tyre load panel', codes: ['KeyU'], keys: ['U'] },
   { id: 'telemetry', group: 'Game', label: 'Telemetry readout', codes: ['F3', 'Backquote'], keys: ['F3', '`'] },
+  { id: 'record', group: 'Game', label: 'Drive recorder: start / stop (turn it on in Menu → Game)', codes: ['F8'], keys: ['F8'] },
   { id: 'tuning', group: 'Game', label: 'Tuning: engine, gearing, tyres, suspension, colliders (the game keeps running)', codes: ['Tab'], keys: ['Tab'] },
 ];
 

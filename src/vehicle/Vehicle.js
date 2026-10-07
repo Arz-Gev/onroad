@@ -302,8 +302,12 @@ export class Vehicle {
       // into the countersteer and catches the rotation)
       const cs = Math.atan2(vy - r * (this.P.wheelbase / 2 + this.P.com[2]), Math.max(Math.abs(vx), 1)) + 0.25 * this.betaRate;
       if (Math.abs(beta) > 0.07 && vx > 0) {
-        if (raw.steer === 0) target = Math.max(-maxA, Math.min(maxA, cs));
-        else if (Math.sign(raw.steer) === Math.sign(cs)) target = Math.sign(cs) * Math.min(maxA, Math.abs(cs) + 0.15 * Math.abs(raw.steer));
+        // in a held drift the front tyres still corner (front and rear side forces balance the yaw), so the
+        // wheels sit a little into the turn from the axle's travel; pointing them at or past the travel
+        // pushes the nose out and straightens the car. The countersteer key only takes that margin away.
+        const s = Math.sign(cs), into = 0.8 * (this.gripSlip || 0.1);
+        if (raw.steer === 0) target = s * Math.min(maxA, Math.max(0, Math.abs(cs) - into));
+        else if (Math.sign(raw.steer) === s) target = s * Math.min(maxA, Math.abs(cs) + 0.03 * Math.abs(raw.steer));
       }
     } else { this.betaPrev = 0; this.betaRate = 0; }
     const rate = this.P.steer.rate ?? 1.35 * 17 / this.P.steer.ratio; // rad/s at the road wheel (hydraulic rack; stock 17:1)

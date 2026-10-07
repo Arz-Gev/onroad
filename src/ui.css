@@ -403,3 +403,10 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
   .lamp[data-s="blink"], .lamp[data-s="pulse"] { animation: none; }
 }
 
+
+/* drive recorder (recorder.js): Rec button at the end of the top row */
+.rec-btn .rec-dot { width: calc(9 * var(--u)); height: calc(9 * var(--u)); border-radius: 50%; background: var(--faint, #888); }
+.rec-btn.rec-on { border-color: var(--hot, #ff5c35); }
+.rec-btn.rec-on .rec-dot { background: var(--hot, #ff5c35); animation: rec-blink 1s steps(2) infinite; }
+@keyframes rec-blink { 50% { opacity: 0.25; } }
+.rec-btn { font-variant-numeric: tabular-nums; min-width: calc(108 * var(--u)); justify-content: flex-start; }

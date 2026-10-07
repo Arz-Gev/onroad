@@ -21,6 +21,7 @@ export const DEFAULTS = {
   suspension: false,        // wheel load / travel panel
   telemetry: false,
   fps: false,
+  recorder: false,          // drive recorder: Rec button in the HUD + F8 (recorder.js)
   autoPause: true,          // open the menu when the window loses focus
   quality: 'auto',          // graphics preset: 'auto' | 'low' | 'medium' | 'high' | 'ultra' | 'custom'
   renderScale: 1,           // resolution scale on top of the pixel-ratio cap (0.5..1)

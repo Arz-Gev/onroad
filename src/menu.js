@@ -47,6 +47,7 @@ const SECTIONS = [
   ] },
   { title: 'Game', col: 2, rows: [
     row('autoPause', 'Pause when the window loses focus', 'switch'),
+    row('recorder', 'Drive recorder', 'switch', { note: 'Adds a Rec button to the HUD (F8). Records every input and the car\'s state; stopping copies the log to the clipboard.' }),
     row('_game', '', 'buttons', { buttons: [['resetSettings', 'Reset settings']] }),
   ] },
 ];
