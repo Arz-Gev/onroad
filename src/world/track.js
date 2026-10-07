@@ -113,3 +113,37 @@ export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer
 
   return { group: root, terrain, teleports, info, spawn: teleports[0] || { x: 0, z: 0, yaw: 0 } };
 }
+
+// ?map=flat: a 20 km square of asphalt at y = 0 with a 10 m grid painted on it, for testing the car (drift,
+// handling) with no walls or kerbs in the way. Same return shape as buildTrack.
+export function buildFlat({ RAPIER, world, colliderSurface }) {
+  const size = 20000;
+  const col = world.createCollider(RAPIER.ColliderDesc.cuboid(size / 2, 1, size / 2).setTranslation(0, -1, 0)
+    .setFriction(0.9).setRestitution(0.05).setCollisionGroups(GROUP_GROUND));
+  colliderSurface.set(col.handle, SURFACES.asphalt);
+
+  // grid texture: dark asphalt, thin light lines every 10 m, a brighter one every 100 m
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const g = c.getContext('2d');
+  g.fillStyle = '#2b2b2d'; g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 10; i++) {
+    g.fillStyle = i === 0 ? '#b8b8b0' : '#55555a';
+    const w = i === 0 ? 6 : 3;
+    g.fillRect(i * 102.4, 0, w, 1024); g.fillRect(0, i * 102.4, 1024, w);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(size / 100, size / 100);
+  tex.anisotropy = 8;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+  mesh.receiveShadow = true;
+  const group = new THREE.Group();
+  group.add(mesh);
+
+  const terrain = { heightAt: () => 0, surfaceAt: () => SURFACES.asphalt, waterLevelAt: () => -Infinity, trailCurves: [] };
+  const spawn = { name: 'Centre', tag: 'Flat', title: 'Centre', desc: 'The middle of the test pad.', x: 0, z: 0, yaw: 0 };
+  return { group, terrain, teleports: [spawn], info: {}, spawn };
+}

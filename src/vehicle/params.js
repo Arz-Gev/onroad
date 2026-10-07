@@ -149,20 +149,24 @@ export function makeS15Params() {
     // Per corner: k is the wheel rate (N/m at the wheel), bump / rebound the damping at the wheel, mass the
     // axle's unsprung mass (both corners). arb is the bar's roll stiffness (N·m/rad), rcY the roll centre
     // height (a lowered strut car's sits near the ground), anti the anti-dive / anti-squat fraction.
+    // Track coilovers: ~2.4 Hz front / 2.3 Hz rear ride, ~1.5 deg roll at 1 g, the front taking ~56 % of the
+    // roll stiffness (52 % of the weight), so the car turns in and grips but the throttle can still break
+    // the rear loose. ~4.5 cm static sag and ~6 cm of bump travel before the bump stops (the old 11 cm
+    // travel left the rear 2 mm off them at rest). Dampers ~0.5 / 0.8 of critical in bump / rebound.
     suspension: 'independent',
     axles: [
       {
-        name: 'front', z: -wheelbase / 2, droopY: 0.29, travel: 0.11,
-        mass: 90, k: 70000, preload: 0.0,
-        bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 9000, rcY: 0.05, anti: 0.15,
+        name: 'front', z: -wheelbase / 2, droopY: 0.29, travel: 0.16,
+        mass: 90, k: 65000, preload: 0.0,
+        bump: 4500, rebound: 7000, damperKnee: 0.12, damperHigh: 0.45,
+        arb: 20000, rcY: 0.05, anti: 0.15,
         steered: true,
       },
       {
-        name: 'rear', z: wheelbase / 2, droopY: 0.277, travel: 0.11,
-        mass: 90, k: 45000, preload: 0.0,
-        bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 3000, rcY: 0.09, anti: 0.3,
+        name: 'rear', z: wheelbase / 2, droopY: 0.277, travel: 0.16,
+        mass: 90, k: 55000, preload: 0.0,
+        bump: 4000, rebound: 6000, damperKnee: 0.12, damperHigh: 0.45,
+        arb: 10000, rcY: 0.09, anti: 0.3,
         steered: false,
       },
     ],
@@ -176,8 +180,8 @@ export function makeS15Params() {
       damping: 400,
       relaxX: 0.15, relaxY: 0.4,
     },
-    // quick rack: a slide is caught with the wheel, ~3.5 rad/s at the road wheels (lock to lock in ~0.4 s)
-    steer: { maxAngle: 0.75, kingpinTrack: 1.45, ratio: 13, rate: 3.5, ackermann: 0.2, casterTrail: 0.025, pneuTrail: 0.03, stiffness: 40000 },
+    // quick rack: a slide is caught with the wheel, ~2.8 rad/s at the road wheels (lock to lock in ~0.5 s; faster made the keyboard twitchy)
+    steer: { maxAngle: 0.75, kingpinTrack: 1.45, ratio: 13, rate: 2.8, ackermann: 0.2, casterTrail: 0.025, pneuTrail: 0.03, stiffness: 40000 },
     brakes: { front: 1500, rear: 850, handbrake: 2500, handbrakeHold: 8000 },
     engine: {
       ...P.engine,

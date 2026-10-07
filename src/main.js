@@ -13,7 +13,7 @@ import { buildUndergrowth } from './world/undergrowth.js';
 import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
-import { buildTrack } from './world/track.js';
+import { buildTrack, buildFlat } from './world/track.js';
 import { makeDefenderParams } from './vehicle/params.js';
 import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
@@ -88,7 +88,7 @@ async function main() {
   const pipeline = new RenderPipeline(renderer, scene, camera);
 
   // ?map=offroad brings back the offroad world; the default is the Ebisu track (AC conversion, world/track.js),
-  // without its trees unless ?trees=1
+  // without its trees unless ?trees=1; ?map=flat is an endless flat asphalt pad for testing the car
   const params = new URLSearchParams(location.search);
   const trackMode = params.get('map') !== 'offroad';
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -100,7 +100,8 @@ async function main() {
   let terrain, terrainView = null, grass, water = null, props, trees, undergrowth = null, track = null, spawn;
   if (trackMode) {
     setLoading('Loading the track…', 0.3); await frame();
-    track = await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
+    track = params.get('map') === 'flat' ? buildFlat({ RAPIER, world, colliderSurface })
+      : await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
     scene.add(track.group);
     terrain = track.terrain;
     spawn = track.spawn;
