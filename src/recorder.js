@@ -24,7 +24,8 @@ export class Recorder {
     this.btn.type = 'button'; this.btn.className = 'menu-btn rec-btn'; this.btn.tabIndex = -1; this.btn.hidden = true;
     this.btn.addEventListener('mousedown', e => e.preventDefault());
     this.btn.addEventListener('click', () => this.toggle());
-    hudRoot.querySelector('.tl-row')?.insertBefore(this.btn, hudRoot.querySelector('#h-hints'));
+    // last in the top row: its text changes while recording, so nothing after it may shift
+    hudRoot.querySelector('.tl-row')?.appendChild(this.btn);
 
     this.panel = document.createElement('div');
     this.panel.className = 'rec-panel'; this.panel.hidden = true;

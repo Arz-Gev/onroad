@@ -428,3 +428,4 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
   border: 1px solid var(--line, #333); background: rgba(0, 0, 0, 0.5); color: inherit;
   font: 11px/1.4 var(--mono, monospace); white-space: pre; overflow: auto;
 }
+.rec-btn { font-variant-numeric: tabular-nums; min-width: calc(108 * var(--u)); justify-content: flex-start; }

@@ -461,6 +461,7 @@ async function main() {
     onPause: setPaused,
   });
   game.menu = menu;
+  game.recorder = recorder;
   Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), notify, redraw: () => { game.redraw = 3; } });
   colliderView.setEnabled(!!tuning.state.ui.overlay);
   game.setPaused = setPaused;
