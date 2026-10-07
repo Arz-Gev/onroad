@@ -404,28 +404,9 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 }
 
 
-/* drive recorder (recorder.js): Rec button next to Menu, log panel */
+/* drive recorder (recorder.js): Rec button at the end of the top row */
 .rec-btn .rec-dot { width: calc(9 * var(--u)); height: calc(9 * var(--u)); border-radius: 50%; background: var(--faint, #888); }
 .rec-btn.rec-on { border-color: var(--hot, #ff5c35); }
 .rec-btn.rec-on .rec-dot { background: var(--hot, #ff5c35); animation: rec-blink 1s steps(2) infinite; }
 @keyframes rec-blink { 50% { opacity: 0.25; } }
-.rec-panel {
-  position: fixed; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(900px, calc(100vw - 32px)); height: min(70vh, 640px); display: flex; flex-direction: column; gap: 8px;
-  padding: 12px; box-sizing: border-box; border: 1px solid var(--line, #333); border-radius: 12px;
-  background: rgba(10, 10, 12, 0.92); color: var(--txt, #eee); font: 500 13px/1.3 var(--sans, sans-serif);
-}
-.rec-panel[hidden] { display: none; }
-.rec-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.rec-acts { display: flex; gap: 6px; }
-.rec-acts button {
-  font: inherit; color: inherit; background: var(--panel-hi, #222); border: 1px solid var(--line, #333);
-  border-radius: 8px; padding: 5px 12px; cursor: pointer;
-}
-.rec-acts button:hover { border-color: var(--line-2, #555); }
-.rec-panel textarea {
-  flex: 1; min-height: 0; resize: none; box-sizing: border-box; padding: 8px; border-radius: 8px;
-  border: 1px solid var(--line, #333); background: rgba(0, 0, 0, 0.5); color: inherit;
-  font: 11px/1.4 var(--mono, monospace); white-space: pre; overflow: auto;
-}
 .rec-btn { font-variant-numeric: tabular-nums; min-width: calc(108 * var(--u)); justify-content: flex-start; }

@@ -1,7 +1,7 @@
 // Drive recorder (Menu → Game → Drive recorder). While recording it samples the driver's inputs and the
 // car's state at 60 Hz (every 4th physics step) plus the discrete actions (shifts, diff, TC...). Stopping
-// copies the whole log to the clipboard as text (a header, CSV rows, the events) and opens a panel with
-// it to copy again or clear. Started / stopped with the HUD's Rec button or its key (F8).
+// copies the whole log to the clipboard as text (a header, CSV rows, the events) and the button is ready
+// for the next run. Started / stopped with the HUD's Rec button or its key (F8).
 
 const WHEELS = ['fl', 'fr', 'rl', 'rr'];
 const COLS = ['t', 'thr', 'brk', 'steerIn', 'clutchIn', 'hb', 'steerDeg', 'kmh', 'vx', 'vy', 'betaDeg', 'yawDps',
@@ -18,7 +18,8 @@ export class Recorder {
     this.meta = meta;          // () => { car, map, ... } for the log header
     this.on = false;           // the feature switch (setting)
     this.recording = false;
-    this.rows = []; this.events = []; this.t = 0; this.n = 0; this.text = '';
+    this.rows = []; this.events = []; this.t = 0; this.n = 0;
+    this.note = '';            // shown on the button for a moment after a stop ('Copied', 'Copy failed')
 
     this.btn = document.createElement('button');
     this.btn.type = 'button'; this.btn.className = 'menu-btn rec-btn'; this.btn.tabIndex = -1; this.btn.hidden = true;
@@ -27,32 +28,13 @@ export class Recorder {
     // last in the top row: its text changes while recording, so nothing after it may shift
     hudRoot.querySelector('.tl-row')?.appendChild(this.btn);
 
-    this.panel = document.createElement('div');
-    this.panel.className = 'rec-panel'; this.panel.hidden = true;
-    this.panel.innerHTML = `
-      <div class="rec-h"><span id="rec-title">Drive log</span><span class="rec-acts">
-        <button type="button" data-a="copy">Copy</button><button type="button" data-a="reset">Reset</button><button type="button" data-a="close">Close</button>
-      </span></div>
-      <textarea readonly spellcheck="false"></textarea>`;
-    this.area = this.panel.querySelector('textarea');
-    this.title = this.panel.querySelector('#rec-title');
-    this.titleBase = 'Drive log';
-    // the game swallows plain keys; let the text box keep its own (select all, copy, arrows)
-    this.panel.addEventListener('keydown', e => e.stopPropagation());
-    this.panel.addEventListener('click', e => {
-      const a = e.target.closest('button')?.dataset.a;
-      if (a === 'copy') this.copy();
-      else if (a === 'reset') this.reset();
-      else if (a === 'close') this.panel.hidden = true;
-    });
-    document.body.appendChild(this.panel);
     this.label();
   }
 
   setEnabled(on) {
     this.on = !!on;
     this.btn.hidden = !this.on;
-    if (!this.on) { if (this.recording) this.stop(); this.panel.hidden = true; }
+    if (!this.on && this.recording) this.stop();
   }
 
   toggle() {
@@ -63,52 +45,38 @@ export class Recorder {
   start() {
     this.rows = []; this.events = []; this.t = 0; this.n = 0;
     this.recording = true;
-    this.panel.hidden = true;
+    this.note = '';
     this.label();
   }
 
   stop() {
     this.recording = false;
-    this.text = this.build();
-    this.area.value = this.text;
-    this.setTitle(`Drive log · ${this.t.toFixed(1)} s · ${this.rows.length} rows`);
-    this.panel.hidden = false;
-    this.label();
-    this.copy();
+    const text = this.build();
+    this.rows = []; this.events = [];
+    this.copy(text);
   }
 
-  reset() {
-    this.rows = []; this.events = []; this.text = ''; this.area.value = '';
-    this.setTitle('Drive log');
-    this.label();
-  }
-
-  async copy() {
-    if (!this.text) return;
+  async copy(text) {
     let ok = false;
-    try { await navigator.clipboard.writeText(this.text); ok = true; } catch {
-      // no clipboard permission (or no focus): fall back to selecting the text box and execCommand
-      try { this.area.focus(); this.area.select(); ok = document.execCommand('copy'); this.area.blur(); } catch { ok = false; }
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {
+      // no clipboard permission (or no focus): a temporary text box and execCommand
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta);
+      try { ta.select(); ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
     }
-    this.flash(ok ? 'Copied to clipboard' : 'Copy failed: select the text and copy it');
-  }
-
-  setTitle(t) {
-    clearTimeout(this.flashT);
-    this.titleBase = this.title.textContent = t;
-  }
-
-  flash(msg) {
-    this.title.textContent = `${this.titleBase} — ${msg}`;
-    clearTimeout(this.flashT);
-    this.flashT = setTimeout(() => { this.title.textContent = this.titleBase; }, 2500);
+    this.note = ok ? 'Copied' : 'Copy failed';
+    this.label();
+    clearTimeout(this.noteT);
+    this.noteT = setTimeout(() => { this.note = ''; this.label(); }, 2000);
   }
 
   label() {
     this.btn.classList.toggle('rec-on', this.recording);
     this.btn.innerHTML = this.recording
       ? `<i class="rec-dot"></i><span>Stop ${this.t.toFixed(0)} s</span><span class="kc"><kbd class="cap">F8</kbd></span>`
-      : `<i class="rec-dot"></i><span>Rec</span><span class="kc"><kbd class="cap">F8</kbd></span>`;
+      : `<i class="rec-dot"></i><span>${this.note || 'Rec'}</span><span class="kc"><kbd class="cap">F8</kbd></span>`;
   }
 
   // a discrete action (shift, diff, TC...): logged with the time it happened
