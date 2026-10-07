@@ -18,6 +18,7 @@ import { makeDefenderParams } from './vehicle/params.js';
 import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
+import { Recorder } from './recorder.js';
 import { Vehicle } from './vehicle/Vehicle.js';
 import { buildTruck } from './vehicle/truckModel.js';
 import { VehicleView } from './vehicle/vehicleView.js';
@@ -162,6 +163,15 @@ async function main() {
   const rig = new CameraRig(camera, terrain);
   const input = new Input(canvas);
   const hud = new HUD();
+  const recorder = new Recorder({ hudRoot: hud.root, meta: () => {
+    const P = vehicle.P, d = vehicle.drivetrain;
+    return {
+      car: P.name, map: params.get('map') || 'ebisu', gearbox: d.mode, autoClutch: d.clutchAssist, rearDiff: d.rearDiff,
+      tc: vehicle.tc, abs: vehicle.abs, steerAssist: settings.get('steerAssist'), pressure: vehicle.pressure,
+      suspension: P.axles.map(a => ({ name: a.name, k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel })),
+      steer: P.steer, tire: { radius: P.tire.radius, width: P.tire.width },
+    };
+  } });
   const audio = new GameAudio();
   const settings = new Settings();
   const dust = new Dust(scene);
@@ -313,6 +323,7 @@ async function main() {
     },
     uiAccent: uiColor, uiCool: uiColor, uiHot: uiColor,
     uiGlass: () => applyUi(),
+    recorder: v => recorder.setEnabled(v),
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
@@ -390,8 +401,9 @@ async function main() {
     suspension: () => toggle('suspension'),
     telemetry: () => toggle('telemetry'),
     tuning: () => tuning.toggle(),
+    record: () => recorder.toggle(),
   };
-  input.onAction = id => { if (ACTIONS[id]) ACTIONS[id](); };
+  input.onAction = id => { if (ACTIONS[id]) { if (id !== 'record') recorder.event(id); ACTIONS[id](); } };
   game.action = id => input.onAction(id);
 
   // ---------------------------------------------------------------- pause menu + welcome card
@@ -510,6 +522,7 @@ async function main() {
         prevPos.copy(curPos); prevQ.copy(curQ);
         vehicle.step(H, raw);
         world.step();
+        recorder.step(H, raw, vehicle);
         const t = vehicle.body.translation(), q = vehicle.body.rotation();
         curPos.set(t.x, t.y, t.z); curQ.set(q.x, q.y, q.z, q.w);
         trees.updatePhysics(t.x, t.z);
