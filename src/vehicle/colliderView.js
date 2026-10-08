@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { D } from './truckDims.js';
 
 // X-ray view of the physics: chassis collision boxes, wheel side cylinders, suspension travel gauges,
 // tyre contact patches and the points where the body touches the
@@ -229,7 +228,7 @@ export class ColliderView {
       // travel gauge: spring compression at this side, 0 = full droop, travel = hard stop
       const g = this.gauges[i];
       const comp = v.wheelComp(w);
-      g.g.position.set(w.side * (D.W + 0.12), ax.droopY, ap.z + (ax.i === 0 ? -0.62 : 0.62));
+      g.g.position.set(w.side * (P.track / 2 + P.tire.width / 2 + 0.15), ax.droopY, ap.z);   // just outside the tyre, at the axle
       g.rail.scale.y = ap.travel;
       g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
       g.mark.position.y = Math.max(-0.02, Math.min(ap.travel + 0.02, comp));
