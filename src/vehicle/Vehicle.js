@@ -111,6 +111,7 @@ export class Vehicle {
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
     this.steerComp = 0;      // compliance steer of the front wheels (aligning moment against the steering)
+    this.alignM = 0; this.handsOff = false;   // front aligning moment (N·m); keyboard with no key held
     this.revTimer = 0;
     this.gripG = 0.63; this.gripSlip = 0.16;  // grip estimate for the keyboard steering limit (dirt)
     this.steerAssist = 'strong'; // keyboard steering limit at speed: 'strong' | 'light' | 'off' (Settings)
@@ -299,9 +300,20 @@ export class Vehicle {
       }
     }
     const target = raw.steer * lim;
-    // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
-    const S = this.P.steer, rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
-    this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
+    const S = this.P.steer;
+    // keyboard, no key held: hands off the wheel. Nothing holds the steering, so the front tyres' aligning
+    // moment about the kingpins (side force x caster + pneumatic trail, steerCompliance) turns the wheels
+    // against the steering's friction / damping, towards the front axle's direction of travel. In a slide
+    // that is countersteer, and more caster gives a stronger, quicker pull.
+    this.handsOff = !raw.analogSteer && raw.steer === 0 && v > 1;
+    if (this.handsOff) {
+      const rate = Math.max(-8, Math.min(8, -this.alignM / (S.freeDamping ?? 45)));
+      this.steerAngle = Math.max(-maxA, Math.min(maxA, this.steerAngle + rate * h));
+    } else {
+      // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
+      const rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
+      this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
+    }
     c.steer = this.steerAngle;
   }
 
@@ -662,7 +674,6 @@ export class Vehicle {
   // the tyre slides (s -> 1), which is why the steering goes light at the limit.
   steerCompliance(h) {
     const S = this.P.steer;
-    if (!S.stiffness) { this.steerComp = 0; return; }
     let M = 0;
     for (let i = 0; i < 2; i++) {
       const w = this.wheels[i];
@@ -670,7 +681,10 @@ export class Vehicle {
       const tp = S.pneuTrail * Math.max(0, 1 - w.slipNorm);
       M += w.Fy * (S.casterTrail + tp);
     }
-    const target = Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
+    this.alignM = M;   // aligning moment of both front wheels about the kingpins (hands off: it steers)
+    if (!S.stiffness) { this.steerComp = 0; return; }
+    // hands off, the whole moment goes into turning the wheels (step()): no driver to flex the linkage against
+    const target = this.handsOff ? 0 : Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
     this.steerComp += (target - this.steerComp) * Math.min(1, h * 60); // steering system lag (~25 Hz)
   }
 

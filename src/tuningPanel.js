@@ -61,6 +61,7 @@ function lr(key, U, ax) {
     'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
     'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
     'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
+    'steering.caster': { l: 'колёса слабее сами идут в занос', r: 'колёса сильнее и быстрее сами ловят занос', n: 'Работает, когда клавиша руля отпущена: колёса сами поворачиваются туда, куда едет перед.' },
   };
   return H[key] || '';
 }
@@ -221,6 +222,7 @@ export class TuningPanel {
       { id: 'steer', title: 'Steering', rows: [
         sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, lr('steering.lock', U)),
         sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, lr('steering.ratio', U)),
+        sl('steering.caster', 'Caster', 'steering.caster', v => `${f1(v)}°`, lr('steering.caster', U)),
       ] },
       { id: 'body', title: 'Body and colliders', rows: [{ type: 'colliders' }] },
       { id: 'measure', title: 'Measure', rows: [{ type: 'dyno' }] },

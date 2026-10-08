@@ -124,7 +124,7 @@ const BASE_RANGES = {
   'suspension.rc': [-0.05, 0.25, 0.005],
   'brakes.force': [0.4, 1.8, 0.05], 'brakes.bias': [0.4, 0.85, 0.01], 'brakes.handbrake': [0.3, 2, 0.05],
   'mass.cargo': [0, 900, 10], 'mass.roof': [0, 300, 5], 'mass.comY': [-0.15, 0.4, 0.01],
-  'steering.lock': [25, 48, 0.5], 'steering.ratio': [11, 24, 0.5],
+  'steering.lock': [25, 48, 0.5], 'steering.ratio': [11, 24, 0.5], 'steering.caster': [2, 10, 0.5],
   'diff.preload': [0, 300, 5], 'diff.power': [0, 1, 0.01], 'diff.coast': [0, 1, 0.01],
   'box.c': [-3.5, 3.5, 0.005], 'box.h': [0.02, 2.2, 0.005], 'box.r': [0, 0.2, 0.005],
 };
@@ -211,7 +211,7 @@ function makeProfile(id) {
       suspension: { lift: 0, front: axle(f), rear: axle(r) },
       brakes: { force: 1, bias: P.brakes.front / (P.brakes.front + P.brakes.rear), handbrake: 1 },
       mass: { cargo: 0, roof: 0, comY: 0 },
-      steering: { lock: P.steer.maxAngle / DEG, ratio: P.steer.ratio },
+      steering: { lock: P.steer.maxAngle / DEG, ratio: P.steer.ratio, caster: Math.round(Math.atan(P.steer.casterTrail / P.tire.radius) / DEG * 2) / 2 },
       colliders: P.colliders.map((box, i) => ({ name: C.colliderNames[i] || `Box ${i + 1}`, box: [...box] })),
     };
     if (C.ui.diff) { const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 }; s.diff = { type: P.rearDiff || 'welded', preload: L.preload, power: L.power, coast: L.coast }; }
@@ -253,7 +253,7 @@ function makeProfile(id) {
     for (const k of ['cargo', 'comY']) out.mass[k] = num(m[k], 'mass.' + k, out.mass[k]);
     if (C.ui.roof) out.mass.roof = num(m.roof, 'mass.roof', out.mass.roof);
     const st = s.steering || {};
-    for (const k of ['lock', 'ratio']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
+    for (const k of ['lock', 'ratio', 'caster']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
     if (out.diff) {
       const df = s.diff || {};
       if (DIFF_TYPES.includes(df.type)) out.diff.type = df.type;
@@ -320,6 +320,8 @@ function makeProfile(id) {
     P.brakes.handbrake = B.brakes.handbrake * br.handbrake;
     // steering
     P.steer.maxAngle = s.steering.lock * DEG; P.steer.ratio = s.steering.ratio;
+    // caster: mechanical trail of the contact patch behind the steering axis (self-steer, compliance)
+    P.steer.casterTrail = P.tire.radius * Math.tan(s.steering.caster * DEG);
     // rear diff (RWD cars): the drivetrain reads P.lsd every step; the type goes in through the panel
     if (s.diff) { P.rearDiff = s.diff.type; P.lsd = { preload: s.diff.preload, power: s.diff.power, coast: s.diff.coast }; }
     // mass: sprung body + cargo + roof load; COM height offset moves the sprung COM
