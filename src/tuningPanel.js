@@ -163,6 +163,7 @@ export class TuningPanel {
         sl('tyres.grip', 'Compound grip', 'tyres.grip', v => `×${f2(v)}`, U.transfer ? 'Grip on every surface. Mud terrain = 1.' : 'Grip on every surface. Street tyres = 1; drifters often run less at the rear.'),
       ] },
       { id: 'susp', title: 'Suspension', rows: [
+        { type: 'suspview' },
         sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), U.transfer ? 'Longer springs: more ground clearance and room in the arches, higher centre of mass.' : 'Lower: less roll and a lower centre of mass, less travel before the bump stops.'),
         ...['k', 'bump', 'rebound', 'arb', 'travel'].flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel' }[k]} ${n}`, 'suspension.' + k,
           v => (k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
@@ -227,6 +228,11 @@ export class TuningPanel {
       </div>
       <div class="tn-row"><div class="tn-l"><span>Collision boxes</span></div><div class="tn-chips tn-boxes"></div></div>
       <div class="tn-boxed"></div>`;
+    if (r.type === 'suspview') return `<div class="tn-row">
+        <div class="tn-l"><span>Show suspension</span><button type="button" class="switch" data-act="suspview" role="switch" aria-label="Show suspension"><span class="knob"></span></button></div>
+        <div class="tn-h">Springs (blue: unloaded, green: static, orange: loaded, red: on the bump stop), damper force beside them (up blue: bump, down orange: rebound), travel gauges (blue tick: static ride height, white: recent peak), tyre load arrows (the tick is the static load) and the axle lines. No collision boxes.</div>
+        <div class="tn-susplive"></div>
+      </div>`;
     if (r.type === 'dyno') return `<div class="tn-row">
         <div class="tn-h">Runs the real physics (this ${this.T.ui.noun}, this setup, this gearbox) on a flat ${this.T.C.surfaceName} pad: full throttle from a standstill to 100 km/h.</div>
         <div class="tn-dynobar"><button type="button" class="tn-b primary" data-act="dyno">${icon('gauge')}0–100</button><span class="tn-dynost"></span></div>
@@ -390,6 +396,12 @@ export class TuningPanel {
       this.save(); this.dirty = true;
       return;
     }
+    if (d.act === 'suspview') {
+      this.state.ui.suspView = !this.state.ui.suspView;
+      this.api.colliderView.setSusp(this.state.ui.suspView);
+      this.save(); this.dirty = true; this.refreshLive();
+      return;
+    }
     if (d.box !== undefined) {
       const i = +d.box;
       this.state.ui.sel = this.state.ui.sel === i ? -1 : i;
@@ -548,6 +560,8 @@ export class TuningPanel {
     ]) : '');
     const ov = el.querySelector('[data-act=overlay]');
     if (ov) ov.setAttribute('aria-checked', !!this.state.ui.overlay);
+    const sv = el.querySelector('[data-act=suspview]');
+    if (sv) sv.setAttribute('aria-checked', !!this.state.ui.suspView);
     if (el.querySelector('.tn-boxes') && !el.querySelector('.tn-boxes').childElementCount) this.renderBoxEditor();
     const i = this.state.ui.sel, box = s.colliders[i]?.box;
     if (box) for (const r of el.querySelectorAll('input[data-box-k]')) {
@@ -586,8 +600,39 @@ export class TuningPanel {
         if (tc.innerHTML !== html) tc.innerHTML = html;
       }
     }
+    const sl = el.querySelector('.tn-susplive');
+    if (sl) { const h = this.suspLiveHTML(); if (sl.innerHTML !== h) sl.innerHTML = h; }
     const ln = el.querySelector('.tn-launch');
     if (ln) { const h = this.lastLaunch ? `Your last launch in the game: <b>0–100 in ${f1(this.lastLaunch.t100)} s</b> (${escapeHTML(this.lastLaunch.label)})` : 'Floor it from a standstill: the panel times your own 0–100 too.'; if (ln.innerHTML !== h) ln.innerHTML = h; }
+  }
+
+  // live per-corner suspension numbers (smoothed by the collider view while its suspension view is on)
+  suspLiveHTML() {
+    const cs = this.api.colliderView?.corners;
+    if (!this.state.ui.suspView || !cs || cs.length < 4) return '';
+    const v = this.v, k1 = x => (x / 1000).toFixed(1), sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    const cell = (c, f) => `<td${c.onStop ? ' class="bad"' : c.topped ? ' class="warn"' : ''}>${f(c)}</td>`;
+    const row = (label, f, plain) => `<tr><td>${label}</td>${cs.map(c => plain ? `<td>${f(c)}</td>` : cell(c, f)).join('')}</tr>`;
+    const tbl = `<table><tr><th></th><th>FL</th><th>FR</th><th>RL</th><th>RR</th></tr>
+      ${row('Travel cm', c => `${(c.comp * 100).toFixed(1)}<em>${Math.round(Math.max(0, c.comp) / c.travel * 100)}%</em>`)}
+      ${row('Speed m/s', c => sg(c.rate, 2), true)}
+      ${row('Spring kN', c => k1(c.spring), true)}
+      ${row('Damper kN', c => sg(c.damper / 1000, 1), true)}
+      ${row('Bar kN', c => sg(c.bar / 1000, 2), true)}
+      ${row('Tyre kN', c => `${k1(c.load)}<em>${c.load > 0 ? pct(c.load, c.staticLoad) : 'air'}</em>`, true)}
+    </table>`;
+    const L = cs.reduce((a, c) => a + c.load, 0) || 1;
+    const fr = (cs[0].load + cs[1].load) / L, lr = (cs[0].load + cs[2].load) / L;
+    const deg = i => `${sg(v.axleRoll(i) / DEG, 1)}°`;
+    const stops = cs.map((c, i) => c.onStop ? ['FL', 'FR', 'RL', 'RR'][i] : null).filter(Boolean);
+    const tops = cs.map((c, i) => c.topped ? ['FL', 'FR', 'RL', 'RR'][i] : null).filter(Boolean);
+    const note = stops.length ? `<span class="bad">${stops.join(' ')}</span>` : tops.length ? `<span class="warn">droop ${tops.join(' ')}</span>` : 'none';
+    return tbl + `<div class="tn-kv">
+      <div><span>Axle roll F / R</span><b>${deg(0)} / ${deg(1)}</b></div>
+      <div><span>Load F / R</span><b>${f0(fr * 100)} / ${f0(100 - fr * 100)} %</b></div>
+      <div><span>Load L / R</span><b>${f0(lr * 100)} / ${f0(100 - lr * 100)} %</b></div>
+      <div><span>On the bump stops</span><b>${note}</b></div>
+    </div><div class="tn-h">Travel: compression from full droop (% of the travel). Speed: + bump, − rebound. Axle roll: suspension roll against the body (+ right side compressed). Tyre: load now against static.</div>`;
   }
 
   drawCurve() {

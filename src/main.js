@@ -450,6 +450,7 @@ async function main() {
   game.menu = menu;
   Object.assign(tuningApi, { vehicle, settings, colliderView, action: id => input.onAction(id), notify, redraw: () => { game.redraw = 3; } });
   colliderView.setEnabled(!!tuning.state.ui.overlay);
+  colliderView.setSusp(!!tuning.state.ui.suspView);
   game.setPaused = setPaused;
   hud.onMenu = () => menu.open();
 
