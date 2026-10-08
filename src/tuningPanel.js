@@ -265,7 +265,7 @@ export class TuningPanel {
       <div class="tn-boxed"></div>`;
     if (r.type === 'suspview') return `<div class="tn-row">
         <div class="tn-l"><span>Show suspension</span><button type="button" class="switch" data-act="suspview" role="switch" aria-label="Show suspension"><span class="knob"></span></button></div>
-        <div class="tn-h">Карточка у каждого колеса, линия ведёт к его ступице. Полоска слева: ход подвески снизу вверх, от полного провиса до упора. Белая заливка показывает, насколько подвеска сжата сейчас. Красноватая зона сверху: отбойник (последние 5 см хода). Синяя черта: где подвеска стоит в покое. Тонкая белая черта: самое сильное сжатие за последние секунды. Крупное число: сколько хода использовано. Ниже нагрузка на шину в кН и насколько она больше или меньше, чем в покое (синим, если больше на 25 % и сильнее). Последняя строка: скорость подвески, ▲ сжатие, ▼ отбой (синим, когда быстро). Карточка краснеет, когда подвеска на отбойнике, и бледнеет, когда колесо в воздухе. На самих колёсах белые столбики: нагрузка на шину, синий крестик на высоте нагрузки в покое. Выше крестика колесо нагружено больше обычного.</div>
+        <div class="tn-h">Springs (blue: unloaded, green: static, orange: loaded, red: on the bump stop), damper force beside them (up blue: bump, down orange: rebound), travel gauges (blue tick: static ride height, white: recent peak), tyre load arrows (the tick is the static load) and the axle lines. No collision boxes.</div>
         <div class="tn-susplive"></div>
       </div>`;
     if (r.type === 'dyno') return `<div class="tn-row">
