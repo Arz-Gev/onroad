@@ -1,4 +1,3 @@
-// Track viewer: /viewer.html?track=ebisu_north. Orbit with the mouse; starts at the hotlap start.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';

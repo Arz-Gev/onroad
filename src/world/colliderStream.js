@@ -1,18 +1,12 @@
 import { MAP_SIZE } from './terrain.js';
 
-// Static colliders streamed in around the truck. Rapier's step cost grows with the number of colliders in
-// the world, even static, far away or disabled ones (measured: ~0.12 us per collider per 240 Hz step, so
-// 800 boulders cost 0.1 ms per step = 0.4 ms per frame). Only the chunks within `ring` chunks of the
-// truck have their colliders; they are created on entry and removed on exit (a convex hull costs ~0.08 ms
-// to build, a handful per chunk). Scene queries see new colliders after the next world.step().
-
 export class ColliderStream {
   constructor(RAPIER, world, colliderSurface, { chunk = 32, ring = 2 } = {}) {
     this.RAPIER = RAPIER; this.world = world; this.surfaces = colliderSurface;
     this.chunk = chunk; this.ring = ring;
     this.cn = Math.ceil(MAP_SIZE / chunk);
     this.items = Array.from({ length: this.cn * this.cn }, () => []);
-    this.active = new Map();     // chunk index -> [colliders]
+    this.active = new Map();
     this.cur = -1;
     this.total = 0;
   }
@@ -22,11 +16,10 @@ export class ColliderStream {
     return Math.min(n - 1, Math.max(0, Math.floor((z + h) / this.chunk))) * n + Math.min(n - 1, Math.max(0, Math.floor((x + h) / this.chunk)));
   }
 
-  // desc: a Rapier ColliderDesc (created again on every stream-in); surface: tyre surface for the wheels
   add(x, z, desc, surface) {
     this.items[this.chunkOf(x, z)].push({ desc, surface });
     this.total++;
-    this.cur = -1;   // re-evaluate on the next update
+    this.cur = -1;
   }
 
   get count() { let n = 0; for (const l of this.active.values()) n += l.length; return n; }

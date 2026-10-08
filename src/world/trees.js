@@ -6,21 +6,12 @@ import { makeFoliageAtlas, buildSpruce, buildPine, buildBirch, buildDead, buildP
 import { makeBarkTexture } from './textures.js';
 import { ColliderStream } from './colliderStream.js';
 
-// Trees and undergrowth.
-// - ~12k trees in forests (spruce, pine, birch, dead snags), every one with a trunk collider.
-// - Near the camera (preset radius, ~80 m) trees are real geometry: bark trunks and branches plus
-//   alpha-tested foliage cards, swaying in the wind (also in the shadow pass).
-// - Beyond that every tree is an impostor: a camera-facing card showing the tree baked from 8 directions
-//   at startup (albedo + normals, so it is lit like the real tree). The two cross-fade with a dither.
-// - Undergrowth (ferns, shrubs, flower and grass tufts) and fallen logs near the camera.
-// - The forest also writes the ground data map: forest floor under crowns, less grass, darker ground.
-
 const HALF = MAP_SIZE / 2;
 const VIEWS = 8, CELL_W = 192, CELL_H = 384;
 const CHUNK = 32, CN = MAP_SIZE / CHUNK;
 
-const WIND_GLSL = /* glsl */`
-uniform vec4 uWind;   // dir x, dir z, strength, time
+const WIND_GLSL =`
+uniform vec4 uWind;
 attribute float aWind;
 vec3 windOffset(vec3 objPos, float w) {
   vec3 ip = instanceMatrix[3].xyz;
@@ -29,9 +20,7 @@ vec3 windOffset(vec3 objPos, float w) {
   float sway = sin(t * 0.85 + ph) * 0.55 + sin(t * 1.9 + ph * 1.7) * 0.2 + 0.45;
   float gust = 0.6 + 0.4 * sin(t * 0.31 + ip.x * 0.013 + ip.z * 0.009);
   vec3 ww = vec3(uWind.x, 0.0, uWind.y) * uWind.z * gust * sway * w * 0.32;
-  // tips flutter
   ww += vec3(sin(t * 5.3 + dot(objPos, vec3(2.1, 1.7, 2.9)) + ph), sin(t * 4.1 + dot(objPos, vec3(1.3, 2.3, 1.1))), cos(t * 4.7 + dot(objPos, vec3(2.7, 1.1, 1.9)))) * 0.045 * w * w * uWind.z;
-  // world -> object space (yaw + uniform scale)
   float s2 = dot(instanceMatrix[0].xyz, instanceMatrix[0].xyz);
   return (transpose(mat3(instanceMatrix)) * ww) / s2;
 }
@@ -39,9 +28,9 @@ vec3 windOffset(vec3 objPos, float w) {
 
 export const NO_FLIP_NORMAL = THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', '');
 
-const FADE_GLSL = /* glsl */`
-uniform vec2 uFade;   // near-mesh / impostor cross-fade band (distance from the camera, m)
-uniform vec3 uViewPos; // the view camera (also in the shadow pass, where cameraPosition is the light's)
+const FADE_GLSL =`
+uniform vec2 uFade;
+uniform vec3 uViewPos;
 varying float vTreeDist;
 float ditherHash(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 `;
@@ -59,10 +48,8 @@ vTreeDist = distance(instanceMatrix[3].xyz, uViewPos);`);
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
 if (ditherHash(gl_FragCoord.xy) < smoothstep(uFade.x, uFade.y, vTreeDist)) discard;`);
     if (opts.translucent) {
-      // foliage cards: both faces keep the outward (crown-volume) normal; three's DoubleSide flip made
-      // every back-facing card shade as if it faced into the crown
       sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', NO_FLIP_NORMAL);
-      // foliage: a touch of light through the leaves when backlit
+
       sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
 outgoingLight += diffuseColor.rgb * 0.12 * reflectedLight.directDiffuse;
 #include <opaque_fragment>`);
@@ -71,11 +58,10 @@ outgoingLight += diffuseColor.rgb * 0.12 * reflectedLight.directDiffuse;
   mat.customProgramCacheKey = () => 'tree-' + kind;
 }
 
-// ---------------------------------------------------------------- impostor baking
-const BAKE_VERT = /* glsl */`
+const BAKE_VERT =`
 varying vec2 vUv; varying vec3 vN;
 void main() { vUv = uv; vN = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
-const BAKE_FRAG = /* glsl */`
+const BAKE_FRAG =`
 uniform sampler2D tMap; uniform float uMode, uAlphaTest; uniform vec3 uTint;
 varying vec2 vUv; varying vec3 vN;
 void main() {
@@ -133,7 +119,6 @@ function bakeImpostors(renderer, variants) {
   return { albedo: albedo.texture, normal: normal.texture, rows };
 }
 
-// ---------------------------------------------------------------- the forest
 export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, terrainView, windUniform) {
   const group = new THREE.Group(); group.name = 'trees';
   const atlas = makeFoliageAtlas();
@@ -150,7 +135,6 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
   ];
   for (const v of variants) v.atlas = atlas;
 
-  // ---- placement
   const rnd = mulberry32(777);
   const nForest = makeSimplex2D(5), nKind = makeSimplex2D(9);
   const trees = [];
@@ -160,7 +144,7 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
     const x = gx + (rnd() - 0.5) * G * 0.9, z = gz + (rnd() - 0.5) * G * 0.9;
     const r = Math.hypot(x, z);
     let dens = fbm(nForest, x * 0.0065, z * 0.0065, 4) * 1.6 + 0.05;
-    // zones: dense conifer forest to the north, groves round the lake, sparse meadows south
+
     dens += smoothstep(-160, -260, z) * smoothstep(320, 200, Math.abs(x + 40)) * 0.75;
     dens -= smoothstep(220, 320, z) * smoothstep(-250, -120, x) * 0.3;
     dens += smoothstep(420, 470, Math.max(Math.abs(x), Math.abs(z))) * 0.4;
@@ -179,7 +163,7 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
     const y = terrain.surfaceHeight(x, z);
     const n = terrain.normalAt(x, z);
     if (n.y < 0.8) continue;
-    // species: birches near water and in the south, pines on high / dry ground, a few snags
+
     const wet = Math.max(0, 1 - Math.hypot((x - lake.x) / (lake.rx + 70), (z - lake.z) / (lake.rz + 70)));
     const k = nKind(x * 0.01, z * 0.01);
     let vi;
@@ -192,13 +176,12 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
     trees.push({ x, y, z, s, yaw: rnd() * Math.PI * 2, v: vi });
   }
 
-  // ---- fallen logs on the forest floor (instanced, three lengths), with streamed colliders
   const logStream = new ColliderStream(RAPIER, world, colliderSurface);
   const LOG_LEN = [4.2, 6.5, 9.0];
   const logs = [];
   for (let tries = 0; tries < 20000 && logs.length < 260; tries++) {
     const t = trees[Math.floor(rnd() * trees.length)];
-    if (!t || t.v === 4) continue;   // not under birches (they stand in the open)
+    if (!t || t.v === 4) continue;
     const a = rnd() * Math.PI * 2, d = 2.5 + rnd() * 4;
     const x = t.x + Math.cos(a) * d, z = t.z + Math.sin(a) * d;
     const L = LOG_LEN[Math.floor(rnd() * 3)], yaw = rnd() * Math.PI * 2;
@@ -213,7 +196,6 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
   }
   const logMat = new THREE.MeshStandardMaterial({ map: barkC, roughness: 0.95, metalness: 0, color: 0x9a8a7a });
   const logMeshes = LOG_LEN.map((L) => {
-    // along +z, unit radius; bark uv: u around, v along (metres / 1.2)
     const g = new THREE.CylinderGeometry(1, 1.06, L, 10, 1, false).rotateX(Math.PI / 2);
     const uv = g.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * L / 1.2);
@@ -235,11 +217,8 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
     for (const m of logMeshes) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); }
   }
 
-  // ---- colliders (trunks) are streamed in around the truck: Rapier's step cost grows with the number of
-  // colliders even when they are static (16k trunks: +1.9 ms per 240 Hz step), so only the chunks within
-  // ~70 m of the truck have them (a few hundred trunks).
   const chunksOf = (ci) => chunks[ci];
-  const activeChunks = new Map(); // chunk index -> [colliders]
+  const activeChunks = new Map();
   const addChunk = (ci) => {
     const list = [];
     for (const i of chunksOf(ci)) {
@@ -257,7 +236,6 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
   };
   let physChunk = -1;
 
-  // ---- ground data: forest floor under the crowns, less grass, a little darker
   const gd = terrainView.groundData, DN = terrainView.groundN;
   for (const t of trees) {
     const v = variants[t.v];
@@ -279,7 +257,6 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
   }
   terrainView.groundDataChanged();
 
-  // ---- near meshes (per variant: trunk + crown instanced)
   const fade = { value: new THREE.Vector2(43, 50) };
   const viewPos = { value: new THREE.Vector3() };
   const uniformsT = { uWind: windUniform, uFade: fade, uViewPos: viewPos };
@@ -305,13 +282,12 @@ export function buildTrees(RAPIER, world, terrain, colliderSurface, renderer, te
     return { trunk, crown, crownMat, MAXN };
   });
 
-  // ---- impostors (all trees; the shader hides the ones the near meshes cover)
   const imp = bakeImpostors(renderer, variants);
   const impGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
   const impMat = new THREE.MeshStandardMaterial({ map: imp.albedo, alphaTest: 0.45, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
   const heights = variants.map(v => v.geo.height * 1.04);
   const impUniforms = { tImpN: { value: imp.normal }, uImpRows: { value: imp.rows }, uImpH: { value: heights }, uFade: fade, uViewPos: viewPos };
-  const IMP_VERT = /* glsl */`
+  const IMP_VERT =`
 attribute float aVar;
 uniform float uImpRows;
 uniform float uImpH[${variants.length}];
@@ -393,14 +369,12 @@ vec3 nonPerturbedNormal = normal;`);
   impMesh.customDepthMaterial = impDepth;
   group.add(impMesh);
 
-  // ---- chunk index for near selection
   const chunks = Array.from({ length: CN * CN }, () => []);
   trees.forEach((t, i) => {
     const cx = Math.min(CN - 1, Math.max(0, Math.floor((t.x + HALF) / CHUNK))), cz = Math.min(CN - 1, Math.max(0, Math.floor((t.z + HALF) / CHUNK)));
     chunks[cz * CN + cx].push(i);
   });
 
-  // stream trunk colliders around a point (the truck): chunks within 2 chunk rings stay loaded
   const updatePhysics = (x, z) => {
     logStream.update(x, z);
     const cx = Math.floor((x + HALF) / CHUNK), cz = Math.floor((z + HALF) / CHUNK);
@@ -416,13 +390,13 @@ vec3 nonPerturbedNormal = normal;`);
     for (const k of want) if (!activeChunks.has(k)) addChunk(k);
   };
 
-  let lastX = 1e9, lastZ = 1e9, nearR = 50; // full-detail tree radius (m); beyond it trees are impostors
+  let lastX = 1e9, lastZ = 1e9, nearR = 50;
   const counts = new Int32Array(variants.length);
   const api = {
     group, trees, logs, variants, near, impMesh, atlas, fade, updatePhysics,
     get colliderCount() { let n = 0; for (const l of activeChunks.values()) n += l.length; return n; },
     configure(q) {
-      const r = q.treeNear || 50; // presets: 40 m low/medium, 50 m otherwise
+      const r = q.treeNear || 50;
       fade.value.set(r * 0.86, r);
       nearR = r;
       impMesh.castShadow = !!q.impostorShadows;

@@ -1,8 +1,3 @@
-// Convert an Assetto Corsa track folder into something the game loads.
-//   node tools/kn5/convert-track.mjs <ac track folder> [out root, default public/tracks]
-// Writes <out>/<id>/track.glb (meshes merged per material + surface), textures/*.dds (copied as is,
-// the game loads them with DDSLoader) and track.json (spawns, surfaces, racing line, credits).
-// Coordinates stay AC's: x left, y up, z forward is right-handed, so no mirroring is needed.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { parseKn5, walk } from './kn5.mjs';
@@ -15,7 +10,6 @@ const id = basename(src.replace(/\/+$/, ''));
 const out = join(process.argv[3] || 'public/tracks', id);
 mkdirSync(join(out, 'textures'), { recursive: true });
 
-// --- small ini reader (AC ini: [SECTION], KEY=VALUE, ; comments)
 function readIni(file) {
   const res = {}; let sec = null;
   if (!existsSync(file)) return res;
@@ -29,7 +23,6 @@ function readIni(file) {
   return res;
 }
 
-// --- the model: the main kn5 (models.ini layouts list several; take the one named after the folder, else the biggest)
 const kn5s = readdirSync(src).filter((f) => f.toLowerCase().endsWith('.kn5'));
 const kn5File = kn5s.find((f) => f.toLowerCase() === `${id.toLowerCase()}.kn5`)
   || kn5s.sort((a, b) => readFileSync(join(src, b)).length - readFileSync(join(src, a)).length)[0];
@@ -40,8 +33,6 @@ if (buf.includes(Buffer.from('__AC_SHADERS_PATCH_KN5ENC'))) {
 const k = parseKn5(buf);
 if (k.bytesRead !== k.bytesTotal) throw new Error(`parse stopped at ${k.bytesRead} of ${k.bytesTotal}`);
 
-// --- surfaces: AC defaults plus the track's data/surfaces.ini. A mesh is physical when its name is
-// a digit followed by a surface key (1ROAD_main, 2WALL_tunnel).
 const surfaces = {
   ROAD: { friction: 1, physics: 'asphalt' }, WALL: { friction: 1, physics: 'wall' },
   KERB: { friction: 0.92, physics: 'kerb' }, GRASS: { friction: 0.6, physics: 'grass' },
@@ -71,7 +62,6 @@ function surfaceOf(name) {
   return null;
 }
 
-// --- walk the tree with world matrices (column-major, three.js layout)
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 function mul(a, b) {
   const r = new Array(16);
@@ -89,7 +79,7 @@ let skipped = 0;
   const on = active && node.active;
   if (node.name.startsWith('AC_')) {
     if (node.matrix) markers[node.name] = m;
-    return;            // the marker's 12-triangle placeholder mesh is not drawn
+    return;
   }
   if (node.mesh && on) {
     const ms = node.mesh;
@@ -137,8 +127,6 @@ for (const g of groups.values()) {
   });
 }
 
-// --- textures: DXT with power-of-two sides is copied as is; anything else (odd sizes break WebGL's
-// compressed upload, other formats DDSLoader can't read) is decoded, resized to a power of two and written as PNG.
 const texFile = {};
 let transcoded = 0;
 for (const t of k.textures) {
@@ -163,8 +151,6 @@ const materials = k.materials.map((m) => ({
   },
 }));
 
-// --- racing line (ai/fast_lane.ai: int32 version, int32 count, int32 lapTime, int32 sampleCount, then
-// count × { vec3 position, f32 distance, int32 id })
 let line = null;
 const aiFile = join(src, 'ai/fast_lane.ai');
 if (existsSync(aiFile)) {
@@ -179,8 +165,6 @@ if (existsSync(aiFile)) {
   }
 }
 
-// --- spawns: AC_START_n (grid), AC_PIT_n, AC_HOTLAP_START_n. The car faces the marker's +z or -z;
-// pick the one that follows the racing line.
 function tangentNear(p) {
   if (!line) return null;
   let best = 0, bd = Infinity;

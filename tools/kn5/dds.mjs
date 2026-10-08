@@ -1,5 +1,3 @@
-// DDS (DXT1/3/5, uncompressed 32-bit) decode → RGBA, bilinear resize, PNG encode.
-// Used for textures WebGL can't take as compressed data (sides not a multiple of 4 at every mip level).
 import { deflateSync } from 'node:zlib';
 
 export function ddsInfo(d) {
@@ -79,7 +77,6 @@ export function decodeDds(d) {
   return { width: w, height: h, data: out };
 }
 
-// Box-filtered down / bilinear up resize of RGBA8.
 export function resize(img, W, H) {
   const { width: w, height: h, data } = img;
   if (w === W && h === H) return img;

@@ -2,19 +2,12 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { mulberry32 } from './noise.js';
 
-// Procedural textures (no external assets).
-// Ground layers are baked on the GPU at startup into two texture arrays:
-//   albedo (rgb) + height (a)   and   normal (xy in rg) + roughness (b) + cavity AO (a).
-// Layers: 0 grass, 1 dirt track, 2 rock, 3 mud, 4 sand / gravel, 5 forest floor.
-// Every recipe is built from periodic noise, so the tiles wrap seamlessly.
-
 export const LAYER = { grass: 0, dirt: 1, rock: 2, mud: 3, sand: 4, forest: 5 };
 export const LAYER_COUNT = 6;
-// world size (m) covered by one tile of each layer
+
 export const LAYER_TILE = [2.6, 3.2, 5.0, 3.4, 2.2, 2.8];
 
-export const NOISE_GLSL = /* glsl */`
-// ---- periodic noise toolkit (period in cells, integer)
+export const NOISE_GLSL =`
 vec2 hash22(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
   p3 += dot(p3, p3.yzx + 33.33);
@@ -37,7 +30,6 @@ float pfbm(vec2 uv, float per, int oct) {
   }
   return s / n;
 }
-// periodic voronoi: x = distance to nearest point, y = edge distance, z = cell hash
 vec3 pvoronoi(vec2 uv, float per) {
   vec2 p = uv * per;
   vec2 i = floor(p), f = fract(p);
@@ -50,7 +42,6 @@ vec3 pvoronoi(vec2 uv, float per) {
     if (d < d1) { d2 = d1; d1 = d; h = hash12(mod(i + g, per) + 7.7); mr = r; mg = g; }
     else if (d < d2) d2 = d;
   }
-  // edge distance (second pass, Inigo Quilez)
   float md = 8.0;
   for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) {
     vec2 g = mg + vec2(x, y);
@@ -60,14 +51,12 @@ vec3 pvoronoi(vec2 uv, float per) {
   }
   return vec3(sqrt(d1), md, h);
 }
-// scattered stones: returns (height, cell id) of round pebbles
 vec2 pebbles(vec2 uv, float per, float size) {
   vec3 v = pvoronoi(uv, per);
   float r = size * (0.55 + 0.45 * v.z);
   float h = clamp(1.0 - v.x / r, 0.0, 1.0);
   return vec2(sqrt(h) * (0.6 + 0.4 * v.z), v.z);
 }
-// grass blade streaks seen from above
 float blades(vec2 uv, float per, float seed) {
   vec2 p = uv * per;
   vec2 i = floor(p), f = fract(p);
@@ -88,11 +77,11 @@ float blades(vec2 uv, float per, float seed) {
 }
 `;
 
-const BAKE_VERT = /* glsl */`
+const BAKE_VERT =`
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
-const ALBEDO_FRAG = /* glsl */`
+const ALBEDO_FRAG =`
 ${NOISE_GLSL}
 uniform int uLayer;
 varying vec2 vUv;
@@ -101,7 +90,6 @@ void main() {
   vec2 uv = vUv;
   vec3 col; float h;
   if (uLayer == 0) {
-    // grass: mixed greens, dry tips, soil showing through
     float m = pfbm(uv, 4.0, 4), m2 = pfbm(uv + 0.31, 12.0, 3);
     float b1 = blades(uv, 48.0, 1.0), b2 = blades(uv, 64.0, 5.0), b3 = blades(uv, 90.0, 9.0);
     float bl = max(b1, max(b2 * 0.9, b3 * 0.8));
@@ -114,7 +102,6 @@ void main() {
     col *= 0.9 + 0.2 * hash12(floor(uv * 256.0));
     h = 0.35 + 0.5 * bl + 0.15 * m - gap * 0.3;
   } else if (uLayer == 1) {
-    // dirt track: compacted soil, fine gravel, a few larger stones, fine cracks
     float m = pfbm(uv, 3.0, 5), m2 = pfbm(uv + 0.5, 16.0, 3), m3 = pfbm(uv + 0.21, 40.0, 2);
     vec3 soil = mix(srgb(vec3(0.38, 0.30, 0.21)), srgb(vec3(0.52, 0.43, 0.31)), m);
     soil *= 0.88 + 0.24 * m2 + 0.1 * (m3 - 0.5);
@@ -128,7 +115,6 @@ void main() {
     col *= 1.0 - crack * 0.35;
     h = 0.4 + 0.12 * m + 0.15 * fine + 0.5 * big - crack * 0.15;
   } else if (uLayer == 2) {
-    // rock: layered, fractured, lichen and moss in the hollows
     float m = pfbm(uv, 2.0, 6), m2 = pfbm(uv + 0.2, 8.0, 4), m3 = pfbm(uv + 0.7, 32.0, 3);
     vec3 vor = pvoronoi(uv + vec2(m2 * 0.08), 4.0);
     float crack = smoothstep(0.022, 0.0, vor.y) * smoothstep(0.35, 0.6, pfbm(uv + 0.9, 6.0, 2));
@@ -143,7 +129,6 @@ void main() {
     col = base * (1.0 - crack * 0.5);
     h = 0.5 + 0.3 * (m - 0.5) + 0.12 * vor.x + 0.12 * m3 - crack * 0.3 + 0.05 * strata;
   } else if (uLayer == 3) {
-    // mud: dark wet soil with churned ridges and puddles (low height)
     float m = pfbm(uv, 3.0, 5), m2 = pfbm(uv + 0.4, 14.0, 3);
     float ridges = 0.5 + 0.5 * sin((uv.x + m * 0.3) * 6.2831 * 7.0);
     vec3 mud = mix(srgb(vec3(0.19, 0.14, 0.09)), srgb(vec3(0.33, 0.25, 0.16)), m * 0.7 + m2 * 0.3);
@@ -151,7 +136,6 @@ void main() {
     float wet = smoothstep(0.42, 0.3, h);
     col = mix(mud, mud * 0.55, wet);
   } else if (uLayer == 4) {
-    // sand / gravel: dense small stones on pale sand
     float m = pfbm(uv, 3.0, 4);
     vec2 a = pebbles(uv, 34.0, 0.42), b = pebbles(uv + 0.5, 70.0, 0.45), c = pebbles(uv + 0.21, 14.0, 0.3);
     vec3 sand = mix(srgb(vec3(0.47, 0.42, 0.33)), srgb(vec3(0.60, 0.54, 0.44)), m);
@@ -161,7 +145,6 @@ void main() {
     col = mix(col, mix(srgb(vec3(0.38, 0.36, 0.34)), srgb(vec3(0.58, 0.55, 0.51)), c.y), smoothstep(0.0, 0.1, c.x));
     h = 0.25 + 0.1 * m + 0.35 * b.x + 0.45 * a.x + 0.6 * c.x;
   } else {
-    // forest floor: humus, needles, twigs, moss
     float m = pfbm(uv, 3.0, 5), m2 = pfbm(uv + 0.6, 12.0, 3);
     vec3 hum = mix(srgb(vec3(0.15, 0.10, 0.06)), srgb(vec3(0.27, 0.19, 0.11)), m);
     float n1 = blades(uv, 70.0, 3.0), n2 = blades(uv, 110.0, 11.0), tw = blades(uv, 14.0, 17.0);
@@ -175,7 +158,7 @@ void main() {
   gl_FragColor = vec4(col, clamp(h, 0.0, 1.0));
 }`;
 
-const NORMAL_FRAG = /* glsl */`
+const NORMAL_FRAG =`
 precision highp sampler2DArray;
 uniform sampler2DArray tSrc;
 uniform int uLayer;
@@ -187,7 +170,6 @@ void main() {
   float hl = H(vec2(-1, 0)), hr = H(vec2(1, 0)), hd = H(vec2(0, -1)), hu = H(vec2(0, 1));
   float hc = H(vec2(0));
   vec3 n = normalize(vec3((hl - hr) * uStrength, (hd - hu) * uStrength, 1.0));
-  // cavity: lower than the neighbourhood -> occluded
   float avg = 0.0;
   for (int i = 0; i < 8; i++) { float a = float(i) * 0.785398; avg += H(vec2(cos(a), sin(a)) * 4.0); }
   avg /= 8.0;
@@ -210,7 +192,7 @@ export function bakeGroundLayers(renderer, size = 1024, anisotropy = 8) {
     t.generateMipmaps = true;
     t.minFilter = THREE.LinearMipmapLinearFilter;
   }
-  albedo.texture.colorSpace = THREE.SRGBColorSpace; // stored as sRGB (8-bit precision in the darks), decoded on sampling
+  albedo.texture.colorSpace = THREE.SRGBColorSpace;
   const aMat = new THREE.ShaderMaterial({ vertexShader: BAKE_VERT, fragmentShader: ALBEDO_FRAG, uniforms: { uLayer: { value: 0 } }, depthTest: false, depthWrite: false });
   const nMat = new THREE.ShaderMaterial({
     vertexShader: BAKE_VERT, fragmentShader: NORMAL_FRAG, depthTest: false, depthWrite: false,
@@ -236,8 +218,6 @@ export function bakeGroundLayers(renderer, size = 1024, anisotropy = 8) {
   return { albedo: albedo.texture, normal: normal.texture, targets: [albedo, normal] };
 }
 
-// ---------------------------------------------------------------- small CPU textures
-
 function makeValueNoise(period, seed) {
   const rnd = mulberry32(seed);
   const v = new Float32Array(period * period);
@@ -253,7 +233,6 @@ function makeValueNoise(period, seed) {
   };
 }
 
-// fbm tileable over [0,1)^2
 function tileFbm(octaves, basePeriod, seed) {
   const layers = [];
   for (let o = 0; o < octaves; o++) layers.push(makeValueNoise(basePeriod << o, seed + o * 31));
@@ -268,7 +247,6 @@ function tileFbm(octaves, basePeriod, seed) {
   };
 }
 
-// painted straight into a DataTexture (a canvas would premultiply alpha and wreck the colour of low-alpha texels)
 function canvasTex(size, paint, { srgb = true } = {}) {
   const data = new Uint8Array(size * size * 4);
   paint(data, size);
@@ -292,7 +270,6 @@ function fill(data, size, fn) {
 }
 const cl = v => Math.max(0, Math.min(255, v));
 
-// Black rubber with subtle noise for tyres
 export function makeRubberTexture() {
   return canvasTex(256, (d, size) => {
     const n = tileFbm(4, 8, 61);
@@ -300,7 +277,6 @@ export function makeRubberTexture() {
   });
 }
 
-// Bark: vertical furrows (u wraps around the trunk, v runs up it); alpha = height for the normal
 export function makeBarkTexture(kind = 'conifer') {
   return canvasTex(256, (d, size) => {
     const n = tileFbm(5, 4, kind === 'birch' ? 91 : 71), n2 = tileFbm(3, 16, 73);

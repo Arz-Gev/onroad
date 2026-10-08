@@ -1,5 +1,3 @@
-// Summary of a .kn5: node tree, triangle counts, textures, materials.
-// node tools/kn5/info.mjs <file.kn5> [--tree] [--materials]
 import { readFileSync } from 'node:fs';
 import { parseKn5, walk } from './kn5.mjs';
 

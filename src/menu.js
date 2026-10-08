@@ -3,12 +3,6 @@ import { escapeHTML } from './hud.js';
 import { icon } from './icons.js';
 import { PALETTES, PALETTE_ORDER } from './theme.js';
 
-// Pause menu (Locations / Settings / Graphics / Controls). It pauses the game. Navigation: mouse, keyboard (arrows, Enter, Q/E for tabs, digits for
-// locations, Esc) and gamepad (d-pad / left stick, A, B, LB/RB, Menu) via Input.uiHandler.
-//
-// The menu holds no game state: it reads and writes through `api`
-// ({ get, set, action, locations, teleport, recover, onPause, device, carId }) supplied by main.js.
-
 const TABS = [
   { id: 'locations', label: 'Locations', hot: 'locations', icon: 'pin' },
   { id: 'settings', label: 'Settings', icon: 'sliders' },
@@ -16,7 +10,7 @@ const TABS = [
   { id: 'interface', label: 'Interface', icon: 'palette' },
   { id: 'controls', label: 'Controls', hot: 'controls', icon: 'keyboard' },
 ];
-// plain-text key for a tooltip ("Recover · R")
+
 const keyText = id => { const b = BINDINGS.find(x => x.id === id); return b ? b.keys.join(' / ') : ''; };
 const tip = (label, id) => escapeHTML(id && keyText(id) ? `${label} · ${keyText(id)}` : label);
 
@@ -51,7 +45,6 @@ const SECTIONS = [
   ] },
 ];
 
-// Interface tab: colours (theme.js) and the HUD. Picking a colour by hand switches the palette to Custom.
 const UI_SECTIONS = [
   { title: 'Colours', col: 1, rows: [
     row('uiPalette', 'Palette', 'palette'),
@@ -74,7 +67,6 @@ const UI_SECTIONS = [
   ] },
 ];
 
-// Graphics tab. Changing any option below the preset switches the preset to Custom.
 const GFX_SECTIONS = [
   { title: 'Preset', col: 1, rows: [
     row('quality', 'Quality', 'seg', { options: [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra'], ['custom', 'Custom']], note: 'Auto picks a preset for your graphics chip.' }),
@@ -121,7 +113,6 @@ export class Menu {
 
   get blocking() { return this.isOpen; }
 
-  // ------------------------------------------------------------------ build
   build() {
     const r = this.root;
     r.innerHTML = `
@@ -170,7 +161,7 @@ export class Menu {
       const def = this.rowDef(el.closest('[data-key]').dataset.key);
       this.setValue(def.key, +el.value / def.scale);
     });
-    // keyboard / pad focus ring only after keyboard or pad navigation
+
     r.addEventListener('pointerdown', () => this.sheet.classList.remove('kbnav'));
   }
 
@@ -199,7 +190,7 @@ export class Menu {
       return '';
     };
     const car = this.api.carId;
-    // two fixed columns (each section names its own): rows that hide or show never move a section across
+
     const col = c => sections.filter(s => (s.col || 1) === c).map(s => `
       <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
@@ -221,7 +212,6 @@ export class Menu {
       </div>`;
   }
 
-  // device-dependent labels: header buttons, footer hints
   renderDevice() {
     const dev = this.api.device();
     for (const el of this.root.querySelectorAll('[data-cap]')) el.innerHTML = capsHTML(el.dataset.cap, dev);
@@ -241,7 +231,6 @@ export class Menu {
     this.root.querySelector('#m-foot').innerHTML = items.filter(Boolean).map(([c, t]) => `<span>${c} ${t}</span>`).join('');
   }
 
-  // ------------------------------------------------------------------ state
   refresh() {
     const api = this.api;
     const here = api.get('here');
@@ -258,7 +247,7 @@ export class Menu {
         for (const b of bs) {
           const on = b.dataset.seg === cur;
           b.setAttribute('aria-checked', on);
-          b.tabIndex = on || (!any && b === bs[0]) ? 0 : -1;       // a group with nothing selected stays reachable
+          b.tabIndex = on || (!any && b === bs[0]) ? 0 : -1;
         }
       } else if (def.type === 'switch') {
         rowEl.querySelector('.switch').setAttribute('aria-checked', key === 'fullscreen' ? !!document.fullscreenElement : !!api.get(key));
@@ -271,16 +260,14 @@ export class Menu {
         rowEl.querySelector('output').textContent = api.get('pressureText');
       }
     }
-    // graphics: say which preset Auto chose
-    // pixel density only matters on screens with a device pixel ratio above 1 (re-checked: the window may move)
-    // the grass and bush sliders follow the Grass and bushes switch
+
     const veg = !!api.get('vegetation');
     for (const r of this.panes.graphics.querySelectorAll('.set-row')) if (this.rowDef(r.dataset.key)?.veg) r.hidden = !veg;
     this.panes.graphics.querySelector('[data-key="gDpr"]').hidden = (window.devicePixelRatio || 1) <= 1.01;
     const qn = this.panes.graphics.querySelector('[data-key="quality"] .set-n');
     const qt = api.get('qualityNote');
     if (qn && qt && qn.textContent !== qt) qn.textContent = qt;
-    // one of the two switches (they share the K key) is shown per gearbox
+
     const manual = api.get('gearbox') === 'manual';
     this.panes.settings.querySelector('[data-key="autoClutch"]').hidden = !manual;
     this.panes.settings.querySelector('[data-key="arcadeAuto"]').hidden = manual;
@@ -296,7 +283,6 @@ export class Menu {
 
   runAction(a) {
     if (a === 'fullscreen') {
-      // Keyboard Lock (Chromium) keeps a short Esc press for the menu; holding Esc still leaves fullscreen
       const d = document, done = () => this.isOpen && this.refresh();
       if (d.fullscreenElement) Promise.resolve(d.exitFullscreen?.()).catch(() => {}).then(done);
       else Promise.resolve(d.documentElement.requestFullscreen?.())
@@ -306,7 +292,6 @@ export class Menu {
     this.refresh();
   }
 
-  // ------------------------------------------------------------------ open / close
   open(tab) {
     if (!this.isOpen) {
       this.isOpen = true;
@@ -353,7 +338,6 @@ export class Menu {
   }
 
   focusFirst() {
-    // the first control of the pane, so arrow keys / d-pad start in the content
     const pane = this.panes[this.tab];
     const el = [...pane.querySelectorAll('button, input')].find(x => x.tabIndex >= 0);
     (el || this.root.querySelector('.tab[aria-selected="true"]')).focus({ preventScroll: true });
@@ -368,7 +352,6 @@ export class Menu {
     if (next) { next.focus(); next.scrollIntoView({ block: 'nearest' }); }
   }
 
-  // left / right: change the focused control
   adjust(dir, el, synthetic) {
     if (!el || !this.sheet.contains(el)) return false;
     if (el.classList.contains('tab')) { this.cycleTab(dir); return true; }
@@ -380,7 +363,7 @@ export class Menu {
       return true;
     }
     if (el.type === 'range') {
-      if (!synthetic) return false;            // native keyboard handling
+      if (!synthetic) return false;
       el.value = +el.value + dir * +el.step;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
@@ -395,7 +378,6 @@ export class Menu {
     return false;
   }
 
-  // ------------------------------------------------------------------ input (Input.uiHandler)
   handle(ev) {
     if (ev.type === 'pad') { this.handlePad(ev.btn); return true; }
     const e = ev.e, code = e.code;
@@ -417,8 +399,8 @@ export class Menu {
     }
     const dg = /^(?:Digit|Numpad)([1-9])$/.exec(code);
     if (dg && this.tab === 'locations' && +dg[1] <= this.api.locations.length) { this.api.teleport(+dg[1] - 1); this.close(); return true; }
-    if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') return false;   // native button activation
-    return DRIVE_KEYS.has(code);                                                  // swallow, nothing else reacts
+    if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') return false;
+    return DRIVE_KEYS.has(code);
   }
 
   handlePad(btn) {

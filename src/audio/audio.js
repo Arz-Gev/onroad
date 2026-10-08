@@ -1,18 +1,14 @@
-// WebAudio: V8 worklet + tyre / gravel / wind noise, skid, gear grind, bump-stop knocks, transfer whine.
-// Started on the first user gesture (browsers block audio before that).
-
 export class GameAudio {
   constructor() {
     this.ctx = null;
     this.ready = false;
     this.muted = false;
-    this.volume = 1;              // player volume 0..1 on top of the mix level
-    this.paused = false;          // game paused: master faded out, synthesis keeps running
+    this.volume = 1;
+    this.paused = false;
     this.knockCooldown = 0;
     this.lastGrind = 0;
   }
 
-  // start / starter sound knobs (engine-worklet.js STARTER_DEFAULTS), changed live
   setStarterTune(t) {
     this.starterTune = { ...t };
     this.engine?.port.postMessage({ starter: this.starterTune });
@@ -34,13 +30,12 @@ export class GameAudio {
     if (this.starterTune) this.engine.port.postMessage({ starter: this.starterTune });
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0.9;
-    // cabin vs outside filtering
+
     this.engineFilter = ctx.createBiquadFilter();
     this.engineFilter.type = 'lowpass';
     this.engineFilter.frequency.value = 9000;
     this.engine.connect(this.engineFilter).connect(this.engineGain).connect(master);
 
-    // shared noise source
     const len = ctx.sampleRate * 2;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -62,7 +57,6 @@ export class GameAudio {
     this.mud = chain('bandpass', 260, 1.2);
     this.grind = chain('bandpass', 1400, 4);
 
-    // transfer case / gear whine
     this.whine = ctx.createOscillator();
     this.whine.type = 'triangle';
     this.whineGain = ctx.createGain(); this.whineGain.gain.value = 0;
@@ -124,14 +118,12 @@ export class GameAudio {
     this.mud.g.gain.setTargetAtTime(m * 0.25 * Math.min(1, mud), t, 0.05);
     this.wind.g.gain.setTargetAtTime(m * amb * Math.min(0.35, speed * speed * 0.00025), t, 0.1);
     this.wind.f.frequency.setTargetAtTime(300 + speed * 30, t, 0.2);
-    // whine from the transfer gears in low range, proportional to prop speed and torque
+
     const prop = Math.abs(d.wheelMean() * v.P.finalDrive);
     const tq = Math.min(1, (Math.abs(d.propTorque[0]) + Math.abs(d.propTorque[1])) / 3000);
     this.whine.frequency.setTargetAtTime(Math.max(20, prop * 9 / (2 * Math.PI) * 4), t, 0.03);
     this.whineGain.gain.setTargetAtTime(m * (d.range === 'low' ? 0.025 : 0.008) * Math.min(1, prop / 40) * (0.3 + tq), t, 0.05);
-    // gear grind (a clutchless shift that didn't match revs). Was 0.4 at 1.8-3.4 kHz with a hard attack and
-    // the band jumping every frame: too loud and harsh (player). Now quieter, lower, softer edges, and the
-    // band wanders instead of jumping; it still rasps (the level flutters like teeth clashing).
+
     if (d.grind > 0 && this.lastGrind <= 0) this.grind.g.gain.setTargetAtTime(m * 0.16, t, 0.025);
     if (d.grind <= 0 && this.lastGrind > 0) this.grind.g.gain.setTargetAtTime(0, t, 0.06);
     if (d.grind > 0) {
@@ -139,7 +131,7 @@ export class GameAudio {
       this.grind.g.gain.setTargetAtTime(m * 0.16 * (0.6 + 0.4 * Math.random()) * Math.min(1, d.grind / 0.15), t, 0.015);
     }
     this.lastGrind = d.grind;
-    // bump stops / landing knocks
+
     this.knockCooldown -= dt;
     for (const w of v.wheels) {
       const comp = v.wheelComp(w), rate = Math.abs(v.wheelCompRate(w));
@@ -150,12 +142,10 @@ export class GameAudio {
   toggleMute() { this.setMuted(!this.muted); return this.muted; }
   setMuted(m) { this.muted = !!m; this.applyMaster(); }
 
-  // UI controls: they only scale the master gain, the mix itself is unchanged.
-  // Mute also closes the master so one-shots (bump-stop knocks) are silenced too.
   masterLevel() { return this.paused || this.muted ? 0 : 0.8 * this.volume; }
   applyMaster() { if (this.master) this.master.gain.setTargetAtTime(this.masterLevel(), this.ctx.currentTime, 0.04); }
   setVolume(v) { this.volume = Math.max(0, Math.min(1, v)); this.applyMaster(); }
   setPaused(p) { this.paused = !!p; this.applyMaster(); }
-  // 'locked' until the browser lets the context run (needs a user gesture), then 'running'
+
   get state() { return this.ctx ? this.ctx.state : 'locked'; }
 }

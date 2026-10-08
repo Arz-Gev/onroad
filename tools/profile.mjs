@@ -1,11 +1,5 @@
-// Side profile of the visible truck body against the physics collision boxes: the lowest point of the
-// body per 2 cm slice along z, and the approach / departure / breakover angles of both (same maths as the
-// tuning panel, tuning.geometry). Use it after moving bodywork or colliders.
-//   node tools/profile.mjs            LIST=1 also prints the underside every 10 cm
-// The visible numbers include parts left out of the colliders on purpose: the dangling D-ring shackles
-// (front and rear) and the exhaust tail pipe and silencer, which would scrape / bend, not hold the truck up.
 import * as THREE from 'three';
-// the model draws gauge faces on a canvas: a no-op stand-in is enough for geometry
+
 const noop = new Proxy(function () {}, { get: (t, k) => (k === 'data' ? new Uint8ClampedArray(4) : noop), apply: () => noop, set: () => true });
 globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => noop, style: {} }) };
 const { buildTruck } = await import('../src/vehicle/truckModel.js');
@@ -20,7 +14,7 @@ for (const s of m.suspension) for (const o of [s.coil, s.shockBody, s.shockRod])
 for (const p of m.props) skip.add(p);
 for (const a of m.axles) { for (const l of a.userData.links) skip.add(l.link); skip.add(a.userData.panhard.mesh); }
 const v = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
-const bins = new Map(); // z bin (2 cm) -> lowest body point
+const bins = new Map();
 const put = (z, y, o) => { const k = Math.round(z / 0.02); const e = bins.get(k); if (!e || y < e.y) bins.set(k, { y, o }); };
 m.root.traverse(o => {
   if (!o.isMesh) return;

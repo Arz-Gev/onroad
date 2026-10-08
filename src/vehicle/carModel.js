@@ -3,24 +3,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { patch } from './truckMaterials.js';
 import { buildLightRig } from './truckLights.js';
 
-// A car built from a GLB made by tools/prepcar.mjs: vehicle frame (+x right, +y up, -z forward, y = 0 the
-// ground, z = 0 mid-wheelbase), `body`, `wheel_FL/FR/RL/RR` (spinning parts, origin at the hub, axle
-// along x) and `caliper_XX` groups, and scene extras with the hubs, the wheels' posed camber / toe
-// (`pose`) and the credit line.
-//
-// Each wheel becomes hub -> steer (y) -> pose (static camber / toe) -> spin (x); the calipers hang on the
-// pose node, so they steer but don't spin. CarView places the hubs from the physics every frame.
+export const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'];
 
-export const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'];   // same order as Vehicle.wheels
-
-// per-material looks the source export doesn't carry (it came from SketchUp: flat PBR factors)
 const LOOKS = {
   BODY1: m => new THREE.MeshPhysicalMaterial({
     color: m.color, roughness: 0.32, metalness: 0.0, specularIntensity: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.08,
     side: m.side,
   }),
 };
-// lamp materials: which light group drives their glow, and its colour
+
 const LAMPS = {
   hlgl: ['head', 0xfff1de], hlmat: ['head', 0xfff1de], hlmat1: ['head', 0xfff1de], material_42: ['head', 0xfff1de],
   tlgl: ['tail', 0xff1a08], material_36: ['tail', 0xff1a08], lic_li: ['tail', 0xfff4e0],
@@ -33,14 +24,13 @@ const loader = new GLTFLoader();
 export async function loadCarModel(url, opts = {}) {
   const gltf = await loader.loadAsync(url);
   const src = gltf.scene;
-  const info = src.userData || {};   // GLTFLoader puts the scene extras here
+  const info = src.userData || {};
 
   const root = new THREE.Group();
   root.name = info.car || 'car';
   const body = src.getObjectByName('body');
   root.add(body);
 
-  // materials: one patched copy per source material (env boost, a little road dirt on the paint)
   const mats = new Map();
   const lamps = { head: [], tail: [], reverse: [], amber: [] };
   const fix = m => {
@@ -85,7 +75,6 @@ export async function loadCarModel(url, opts = {}) {
 
   root.traverse(o => { if (o.isMesh) o.frustumCulled = true; });
 
-  // lamps: one head spot in front of the bumper, a bar spot that stays off, the rear glow
   const lights = buildLightRig(root, opts.anchors || { head: [0, 0.6, -2.5], bar: [0, 1.3, -0.4], rear: [0, 0.7, 2.4] });
 
   return {

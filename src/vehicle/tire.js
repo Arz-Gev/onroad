@@ -1,10 +1,3 @@
-// Tyre model: radial spring + transient "bristle" deflection feeding a Pacejka-style combined-slip curve.
-//
-// The contact patch carries two deflection states (ux, uy, metres). They follow the standard
-// relaxation-length equation  du/dt = v_slip - |vx| / L * u, so at speed u/L becomes the classic slip ratio
-// / slip angle, and at standstill the patch behaves like a stiff spring that can hold the truck on a slope.
-// The deflection is clamped by the steady-state slip, which stops wind-up when a wheel spins in place.
-
 export const SURFACES = {
   dirt:     { name: 'Dirt',     mu: 0.72, crr: 0.026, kPeak: 0.15, aPeak: 0.16, C: 1.35, soft: 0.5, dust: 1.0, color: [0.55, 0.45, 0.33] },
   grass:    { name: 'Grass',    mu: 0.58, crr: 0.034, kPeak: 0.14, aPeak: 0.15, C: 1.40, soft: 0.4, dust: 0.25, color: [0.36, 0.40, 0.24] },
@@ -13,35 +6,27 @@ export const SURFACES = {
   sand:     { name: 'Sand',     mu: 0.62, crr: 0.085, kPeak: 0.24, aPeak: 0.20, C: 1.15, soft: 1.0, dust: 1.2, color: [0.75, 0.66, 0.48] },
   wood:     { name: 'Wood',     mu: 0.68, crr: 0.012, kPeak: 0.10, aPeak: 0.13, C: 1.50, soft: 0.0, dust: 0.0, color: [0.4, 0.3, 0.2] },
   concrete: { name: 'Concrete', mu: 0.98, crr: 0.011, kPeak: 0.10, aPeak: 0.12, C: 1.60, soft: 0.0, dust: 0.2, color: [0.6, 0.6, 0.58] },
-  // track surfaces (AC tracks, world/track.js). Asphalt: the slip peak comes early and the force falls off
-  // past it to ~75 % in a full slide (C 1.45), so a slide holds at a little less than peak grip
+
   asphalt:  { name: 'Asphalt',  mu: 1.05, crr: 0.011, kPeak: 0.10, aPeak: 0.105, C: 1.45, soft: 0.0, dust: 0.0, color: [0.2, 0.2, 0.21] },
   kerb:     { name: 'Kerb',     mu: 0.94, crr: 0.013, kPeak: 0.10, aPeak: 0.11, C: 1.45, soft: 0.0, dust: 0.0, color: [0.7, 0.2, 0.2] },
 };
-for (const s of Object.values(SURFACES)) s.B = Math.tan(Math.PI / (2 * s.C)); // peak of sin(C atan(B s)) at s = 1
+for (const s of Object.values(SURFACES)) s.B = Math.tan(Math.PI / (2 * s.C));
 
 const FN_REF = 5200;
 
-// Lateral load sensitivity. A real tyre's cornering stiffness grows much slower than its load (roughly
-// Fz^0.6-0.7), so the slip angle at the force peak grows with load. This is what makes lateral load
-// transfer cost grip: the axle that takes more of it (stiffer roll, more weight) slides first. With a
-// constant peak slip angle the cornering stiffness was almost proportional to load (exponent 0.86) and the
-// truck came out nearly neutral whatever its weight split and anti-roll bars.
 const LAT_LOAD_EXP = 0.35;
 export const latPeak = (surf, Fn) => surf.aPeak * Math.pow(Math.max(0.25, Math.min(2.5, Fn / FN_REF)), LAT_LOAD_EXP);
 
-// Radial stiffness (N/m) as a function of pressure (psi): carcass + air.
 export function tireRadialStiffness(psi) {
   return 46000 + 6300 * psi;
 }
 
-// Per-wheel tyre parameters that depend on pressure and surface. Cheap enough to call every substep.
 export function tireCoefs(tire, psi, surf, out) {
-  const low = Math.max(0, Math.min(1, (30 - psi) / 24)); // 0 at 30 psi, 1 at 6 psi
-  // aired-down tyres grip better on loose / soft ground and on rock (they wrap around it)
+  const low = Math.max(0, Math.min(1, (30 - psi) / 24));
+
   const gripGain = 1 + low * (0.10 + 0.14 * surf.soft) + (surf === SURFACES.rock ? low * 0.08 : 0);
   out.mu = surf.mu * gripGain * (tire.grip ?? 1);
-  // rolling resistance: soft ground prefers low pressure (float), hard ground prefers high pressure
+
   const hard = 1 - surf.soft;
   out.crr = surf.crr * (hard * Math.sqrt(28 / Math.max(psi, 4)) + surf.soft * Math.pow(Math.max(psi, 4) / 28, 0.6));
   out.Lx = tire.relaxX * (1 + 0.6 * low);
@@ -50,8 +35,6 @@ export function tireCoefs(tire, psi, surf, out) {
   return out;
 }
 
-// Contact force in the contact frame. Uses the current deflection state and slip velocities.
-// w: wheel state with ux, uy. Writes w.Fx, w.Fy, w.slipNorm.
 export function tireForces(w, Fn, vsx, vsy, speed, surf, co) {
   if (Fn <= 0) { w.Fx = 0; w.Fy = 0; w.slipNorm = 0; return; }
   const loadFactor = Math.max(0.75, Math.min(1.12, 1 - 0.14 * (Fn / FN_REF - 1)));
@@ -66,7 +49,7 @@ export function tireForces(w, Fn, vsx, vsy, speed, surf, co) {
     Fx = F * sx / s;
     Fy = 0.95 * F * sy / s;
   }
-  // low-speed damping of the contact patch (kills stick-slip oscillation when parked or crawling)
+
   const fade = Math.max(0, 1 - speed / 2.5);
   if (fade > 0 && s < 1) {
     const c = 2.6 * Fn * fade;
@@ -80,12 +63,11 @@ export function tireForces(w, Fn, vsx, vsy, speed, surf, co) {
   w.slipNorm = s;
 }
 
-// Advance the contact patch deflection with implicit Euler and clamp it by the steady-state slip.
 export function tireRelax(w, h, vsx, vsy, avx, surf, co) {
   w.ux = (w.ux + h * vsx) / (1 + h * avx / co.Lx);
   w.uy = (w.uy + h * vsy) / (1 + h * avx / co.Ly);
   const sx = w.ux / (co.Lx * surf.kPeak);
-  const aPk = w.aPk || surf.aPeak;  // set by tireForces this substep (load dependent)
+  const aPk = w.aPk || surf.aPeak;
   const sy = w.uy / (co.Ly * aPk);
   const s = Math.hypot(sx, sy);
   const vref = Math.max(avx, 0.6);

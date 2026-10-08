@@ -3,13 +3,9 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { ATMOSPHERE_GLSL } from './atmosphere.js';
 import { mulberry32 } from './noise.js';
 
-// Sky: a 256x128 sky-view LUT rendered with single scattering whenever the light changes (time-of-day
-// blends), then a dome that reads it and adds the sun disc, the moon, stars, the Milky Way and a moving
-// cloud layer. The same dome (without the sun disc) renders into the PMREM environment map.
-
 const LUT_W = 256, LUT_H = 128;
 
-const LUT_FRAG = /* glsl */`
+const LUT_FRAG =`
 ${ATMOSPHERE_GLSL}
 uniform vec3 uSunDir, uMoonDir;
 uniform vec3 uSunE, uMoonE, uNightBase;
@@ -22,16 +18,15 @@ void main() {
   vec3 c = vec3(0.0);
   if (dot(uSunE, uSunE) > 0.0) c += aScatter(v, uSunDir, 1.0) * uSunE;
   if (dot(uMoonE, uMoonE) > 0.0) c += aScatter(v, uMoonDir, 1.0) * uMoonE;
-  // airglow / light pollution: a faint floor so the night sky is deep blue rather than black
   c += uNightBase * (0.55 + 0.45 * pow(1.0 - max(v.y, 0.0), 3.0));
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-const LUT_VERT = /* glsl */`
+const LUT_VERT =`
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
-const DOME_VERT = /* glsl */`
+const DOME_VERT =`
 varying vec3 vDir;
 void main() {
   vDir = position;
@@ -40,7 +35,7 @@ void main() {
   gl_Position.z = gl_Position.w * 0.99999;
 }`;
 
-const DOME_FRAG = /* glsl */`
+const DOME_FRAG =`
 uniform sampler2D tLUT, tNoise;
 uniform vec3 uSunDir, uMoonDir, uSunDisc, uMoonDisc, uGround;
 uniform vec3 uCloudLit, uCloudAmb;
@@ -87,10 +82,8 @@ void main() {
   vec3 col = lut(d);
   float up = d.y;
 
-  // below the horizon (seen only from high ground, mostly hidden by terrain): dark ground haze
   col = mix(col, uGround + col * 0.6, smoothstep(0.0, -0.08, up));
 
-  // night sky: stars + Milky Way band, faded near the horizon by the atmosphere
   if (uStars > 0.001 && up > -0.02) {
     float hz = smoothstep(-0.02, 0.25, up);
     vec3 gal = normalize(vec3(0.35, 0.55, -0.76));
@@ -101,7 +94,6 @@ void main() {
     col += vec3(0.85, 0.9, 1.0) * stars(d) * 0.012 * uStars * hz;
   }
 
-  // sun disc (limb darkened) and the moon
   #ifndef NO_SUN
   float cs = dot(d, uSunDir);
   float r = acos(clamp(cs, -1.0, 1.0)) / uSunSize;
@@ -109,7 +101,6 @@ void main() {
   float cm = dot(d, uMoonDir);
   float rm = acos(clamp(cm, -1.0, 1.0)) / 0.0105;
   if (rm < 1.0) {
-    // crude phase + maria from the noise texture
     vec3 mx = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)));
     vec3 my = cross(mx, uMoonDir);
     vec2 q = vec2(dot(d - uMoonDir, mx), dot(d - uMoonDir, my)) / 0.0105;
@@ -121,7 +112,6 @@ void main() {
   col += uMoonDisc * 0.0009 * exp(-max(rm - 1.0, 0.0) * 0.12);
   #endif
 
-  // clouds: a layer at ~1.8 km, lit from the sun/moon direction, fading into the haze at the horizon
   if (up > 0.0 && uCloudAlpha > 0.001) {
     float h = 1800.0;
     vec2 p = (d.xz * (h / max(up, 0.02)) + uCamPos.xz) / 9000.0 + uWind * uTime;
@@ -137,7 +127,6 @@ void main() {
       vec3 cc = uCloudAmb * (0.75 + 0.25 * up) + uCloudLit * light * phase;
       float fade = smoothstep(0.0, 0.18, up);
       float a = den * fade * uCloudAlpha;
-      // far clouds take on the sky colour behind them
       cc = mix(cc, col, (1.0 - fade) * 0.5);
       col = mix(col, cc, a);
     }
@@ -146,7 +135,6 @@ void main() {
 }`;
 
 function makeNoiseTexture(size = 256) {
-  // tileable value-noise fbm, four independent channels (r: big shapes, g: mid, b/a: detail)
   const rnd = mulberry32(4242);
   const grid = (period) => { const v = new Float32Array(period * period); for (let i = 0; i < v.length; i++) v[i] = rnd(); return v; };
   const sample = (v, period, x, y) => {
@@ -200,9 +188,9 @@ export class Sky {
       vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, uniforms: this.uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
     }));
     this.dome.frustumCulled = false;
-    this.dome.renderOrder = 1e6;   // after the opaque world: early-z skips everything the terrain covers
+    this.dome.renderOrder = 1e6;
     this.dome.scale.setScalar(2500);
-    // environment version: no sun disc (the sun's direct light is the directional light)
+
     this.envScene = new THREE.Scene();
     this.envDome = new THREE.Mesh(this.dome.geometry, new THREE.ShaderMaterial({
       vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, uniforms: this.uniforms, side: THREE.BackSide, depthWrite: false, defines: { NO_SUN: '' },
@@ -211,7 +199,6 @@ export class Sky {
     this.envScene.add(this.envDome);
   }
 
-  // sunE / moonE: illuminance (rgb) at the top of the atmosphere times the sky brightness scale
   updateLUT(sunDir, sunE, moonDir, moonE, nightBase) {
     const u = this.lutMat.uniforms;
     u.uSunDir.value.copy(sunDir); u.uMoonDir.value.copy(moonDir);

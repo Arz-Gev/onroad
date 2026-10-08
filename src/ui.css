@@ -1,13 +1,4 @@
-/* HUD and pause menu.
-   The HUD scales with --s (set by HUD.resize from the window size and the HUD size setting);
-   every HUD length is written as calc(N * var(--u)) so the whole layer scales as one.
-   The menu uses fixed px and adapts with media queries. */
-
 :root {
-  /* One look for every surface (docs/UI.md): near-black glass, hairline borders, white text.
-     Three colour roles, no others: --accent (main: on, selected, primary), --cool (active and changed:
-     TC / ABS working, handbrake, locked diffs, slip, values changed from stock, focus) and --hot
-     (warnings only). theme.js overwrites them from the Interface tab (palettes or custom colours). */
   --panel: rgba(0, 0, 0, 0.5);
   --panel-hi: rgba(10, 10, 10, 0.78);
   --sheet: rgba(0, 0, 0, 0.72);
@@ -31,7 +22,6 @@
 
 [hidden] { display: none !important; }
 
-/* ------------------------------------------------------------------ key caps */
 kbd.cap {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 1.8em; height: 1.8em; padding: 0 0.45em; box-sizing: border-box;
@@ -48,7 +38,6 @@ kbd.cap.pad-y { background: #a78516; border-color: #e5c04a; color: #1b1606; }
 .cap-none { color: var(--faint); }
 .kc { display: inline-flex; align-items: center; font-size: 0.92em; }
 
-/* ------------------------------------------------------------------ HUD */
 #hud {
   --s: 1; --u: calc(var(--s) * 1px); --gap: calc(16 * var(--u));
   position: fixed; inset: 0; pointer-events: none; z-index: 5;
@@ -103,21 +92,18 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .panel-f .lg-travel::before { background: rgba(255, 255, 255, 0.7); }
 .panel-f .lg-slip::before { background: linear-gradient(90deg, rgba(255, 255, 255, 0.45), var(--accent), var(--cool)); width: calc(14 * var(--u)); }
 
-/* ---- the dash: ticker line over the instrument cluster (bottom right) */
 .dash {
   position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom));
   width: calc(300 * var(--u));
 }
-/* The ticker: a stack of soft lines above the cluster. It takes no space and draws nothing when empty.
-   A line has no border and no marker: a dark glass band whose edges feather out (mask), with the text
-   centred. Newest at the bottom (--k 0); older lines step up and dim. Positions are transforms only. */
+
 .ticker { position: absolute; left: 0; right: 0; bottom: calc(100% + 6 * var(--u)); height: 0; }
 .tk {
   --step: calc(34 * var(--u));
   position: absolute; left: 0; right: 0; bottom: 0; height: calc(30 * var(--u));
   display: flex; align-items: center; justify-content: center; padding: 0 calc(28 * var(--u));
   background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-  /* soft edges all round: a horizontal and a vertical fade, intersected */
+
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent), linear-gradient(transparent, #000 30%, #000 70%, transparent);
   -webkit-mask-composite: source-in;
   mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent), linear-gradient(transparent, #000 30%, #000 70%, transparent);
@@ -142,7 +128,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
   background: var(--panel); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   font-variant-numeric: tabular-nums;
 }
-/* rpm: one bar, the redline zone tinted, a 1000 rpm scale under it */
+
 .rpm { position: relative; }
 .rpm-track { position: relative; height: calc(6 * var(--u)); border-radius: calc(3 * var(--u)); overflow: hidden; background: var(--ghost); }
 .rpm-red { position: absolute; top: 0; bottom: 0; right: 0; background: var(--hot-soft); }
@@ -158,7 +144,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .cl-main { display: flex; align-items: center; gap: calc(12 * var(--u)); margin-top: calc(6 * var(--u)); }
 .gear { flex: none; width: calc(46 * var(--u)); font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; text-align: center; transition: opacity 0.12s; }
 .gear.shifting { opacity: 0.35; }
-/* speed: the unit on the left, the number after it, left-aligned: more digits grow to the right only */
+
 .spd-box { flex: 1 1 auto; display: flex; align-items: baseline; gap: calc(6 * var(--u)); min-width: 0; }
 .spd { font: 600 calc(40 * var(--u))/1 var(--sans); letter-spacing: -0.03em; }
 .unit { order: -1; font: 500 calc(9 * var(--u))/1 var(--sans); color: var(--faint); }
@@ -177,7 +163,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .pd.brk i { background: var(--hot); }
 .pd.off { opacity: 0.3; }
 
-/* indicator lamps: fixed slots, dim when off */
 .lamps { display: flex; align-items: center; gap: calc(4 * var(--u)); margin-top: calc(10 * var(--u)); }
 .lamp {
   flex: 1 1 0; display: grid; place-items: center; height: calc(24 * var(--u)); border-radius: calc(6 * var(--u));
@@ -191,7 +176,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .lamp[data-s="blink"] { color: var(--hot); animation: blink 0.8s steps(1) infinite; }
 .lamp[data-s="pulse"] { color: var(--cool); animation: blink 1.2s steps(1) infinite; }
 
-/* info row: four fixed cells */
 .cl-info {
   display: grid; grid-template-columns: 1.35fr 1fr 0.8fr 0.95fr; gap: calc(2 * var(--u));
   margin-top: calc(8 * var(--u)); padding-top: calc(8 * var(--u)); border-top: 1px solid var(--line);
@@ -201,7 +185,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .cl-info span:nth-child(n + 2) { text-align: center; }
 .cl-info span:last-child { text-align: right; }
 
-/* compact: cockpit view and small windows */
 .dash:has(.cluster.compact) { width: calc(230 * var(--u)); }
 .cluster.compact { padding: calc(10 * var(--u)) calc(12 * var(--u)) calc(8 * var(--u)); }
 .cluster.compact .rpm-scale, .cluster.compact .car, .cluster.compact .pedals, .cluster.compact .cl-info { display: none; }
@@ -209,7 +192,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .cluster.compact .gear { width: calc(34 * var(--u)); }
 .cluster.compact .lamps { margin-top: calc(6 * var(--u)); }
 
-/* ------------------------------------------------------------------ pause menu */
 .ic { width: 18px; height: 18px; flex: none; display: block; }
 .overlay {
   position: fixed; inset: 0; z-index: 20; box-sizing: border-box;
@@ -227,7 +209,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 24px 64px rgba(0, 0, 0, 0.55);
   animation: rise 0.18s ease-out;
 }
-/* three fixed columns: the tabs stay centred and nothing moves when the tab or the car name changes */
+
 .sheet-head { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 10px 10px 10px 18px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; white-space: nowrap; }
 .brand b { font: 700 15px/1 var(--sans); letter-spacing: -0.02em; }
@@ -266,12 +248,10 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .sheet-foot span { display: inline-flex; align-items: center; gap: 5px; }
 .sheet-foot kbd.cap { font-size: 10.5px; }
 
-/* focus ring: keyboard / gamepad navigation only */
 .overlay :focus { outline: none; }
 .overlay :focus-visible, .sheet.kbnav :focus { outline: 2px solid var(--cool); outline-offset: 2px; }
 .overlay .tab:focus-visible, .sheet.kbnav .tab:focus { outline-offset: -2px; }
 
-/* locations */
 .loc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .loc {
   display: flex; align-items: center; gap: 12px; padding: 12px; text-align: left;
@@ -286,7 +266,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .loc-tag { font: 500 12px/1.2 var(--sans); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loc-here { padding: 2px 6px; border-radius: 999px; background: var(--ghost); color: var(--txt); font: 500 10.5px/1 var(--sans); }
 
-/* settings */
 .set-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 0 32px; }
 @media (max-width: 760px) { .set-cols { grid-template-columns: minmax(0, 1fr); } }
 .set-sec { margin-bottom: 22px; }
@@ -299,7 +278,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .set-l { min-width: 0; }
 .set-t { display: flex; align-items: center; gap: 8px; font: 500 13.5px/1.3 var(--sans); }
 .set-t .kc { font-size: 11px; opacity: 0.6; }
-/* a row's note: an (i) with the text in a hover / focus popover */
+
 .set-info { position: relative; display: inline-grid; place-items: center; color: var(--faint); cursor: help; }
 .set-info .ic { width: 14px; height: 14px; }
 .set-info:hover, .set-info:focus { color: var(--txt); }
@@ -312,7 +291,7 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 }
 .set-info:hover .set-n, .set-info:focus .set-n { opacity: 1; visibility: visible; }
 .set-c { flex: none; }
-/* Interface tab: palette swatches and colour pickers */
+
 .set-row[data-key="uiPalette"] { flex-wrap: wrap; }
 .set-row[data-key="uiPalette"] .set-c { flex: 1 1 100%; }
 .set-pal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
@@ -352,7 +331,6 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .stepper button:hover { background: rgba(255, 255, 255, 0.1); }
 .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
-/* controls */
 .ctl-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 4px 32px; }
 .ctl-sec { margin-bottom: 16px; }
 .ctl-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 80px; align-items: center; gap: 12px; min-height: 30px; padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--dim); }
@@ -366,12 +344,10 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 .ctl-p { display: flex; justify-content: center; font-size: 13px; }
 .or { margin: 0 0.4em; color: var(--faint); font-size: 0.9em; }
 
-/* ------------------------------------------------------------------ small and large windows */
 @media (max-width: 760px), (max-height: 520px) {
   .hints { display: none; }
 }
 @media (max-width: 560px) {
-  /* the suspension panel and the cluster don't fit side by side: lift the panel */
   .susp { bottom: calc(var(--gap) + 150 * var(--u)); }
 }
 @media (max-width: 640px) {
@@ -402,4 +378,3 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
   .overlay, .sheet { animation: none; }
   .lamp[data-s="blink"], .lamp[data-s="pulse"] { animation: none; }
 }
-

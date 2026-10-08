@@ -1,18 +1,3 @@
-// Drive a headless Chrome over the DevTools protocol: viewport sizes, keys, clicks, JS, screenshots.
-// Unlike the canvas capture in browser-snippets.js this captures the HTML HUD and menus too, at any
-// window size (the browser pane's own screenshots break when it emulates a size larger than the pane).
-//
-// 1. Start Chrome once (real GPU, rAF not throttled):
-//    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9333 \
-//      --user-data-dir=/tmp/onroad-chrome --no-first-run about:blank &
-// 2. node tools/cdp.mjs steps.json      (CDP_PORT=9334 node ... to talk to a Chrome on another port)
-//    steps: [{ "viewport": [w, h, dpr?, mobile?] }, { "nav": "http://localhost:5174/" }, { "wait": ms },
-//            { "eval": "js expression (awaited)" }, { "key": { "code": "KeyE", "key": "e", "vk": 69 } },
-//            { "click": [x, y] }, { "cpu": 4 }, { "shot": "out.jpg", "clip": [x, y, w, h, scale?] },
-//            { "poll": "expr", "ms": 8000, "every": 100, "shotAt": "text in result", "shotFile": "x.jpg" },
-//            { "preload": "js run before page scripts" }, { "unpreload": true }]
-//    The viewport override lasts for one run (one CDP session), so set it at the start of every steps file.
-//    Console output and exceptions are printed at the end.
 import fs from 'node:fs';
 const steps = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const list = await (await fetch('http://127.0.0.1:' + (process.env.CDP_PORT || 9333) + '/json')).json();

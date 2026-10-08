@@ -3,25 +3,18 @@ import { MAP_SIZE } from './terrain.js';
 import { buildPlant } from './foliage.js';
 import { NO_FLIP_NORMAL } from './trees.js';
 
-// Undergrowth: ferns under the trees, shrubs, meadow flowers and tall grass tufts, placed on the GPU like
-// the grass (grass.js): a camera-centred grid of world cells, one plant per cell at most, the cell's hash
-// gives its position, size and yaw, so plants never move as the grid follows the camera. Density comes from
-// the terrain's ground-data map (forest floor, grass density, wetness) and surface splat (none on trails,
-// rock, sand, mud). Plants shrink to nothing at the edge of their radius instead of popping. Alpha-tested
-// cards from the foliage atlas, swaying in the shared wind. No shadow casting (cheap); they receive shadows.
-
 const HALF = MAP_SIZE / 2;
 const TILES = 6;
 
-const PARS = /* glsl */`
+const PARS =`
 uniform highp sampler2D tHeight;
 uniform sampler2D tSplat, tData, tNoise;
-uniform vec4 uMap;      // half, cell, NN, size
-uniform vec4 uGrid;     // base cell x, base cell z, spacing, cells per tile
-uniform vec4 uRad;      // shrink start, end
-uniform vec4 uShape;    // min scale, max scale, density multiplier, seed
-uniform vec4 uKind;     // weights: forest, meadow, shrub, edge
-uniform vec4 uWind;     // dir x, dir z, strength, time
+uniform vec4 uMap;
+uniform vec4 uGrid;
+uniform vec4 uRad;
+uniform vec4 uShape;
+uniform vec4 uKind;
+uniform vec4 uWind;
 attribute float aWind;
 vec2 uHash22(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
 float uHgt(ivec2 g) { g = clamp(g, ivec2(0), ivec2(int(uMap.z) - 1)); return texelFetch(tHeight, ivec2(g.y, g.x), 0).r; }
@@ -56,7 +49,7 @@ export function buildUndergrowth(terrainView, atlas, windUniform) {
         .replace('#include <beginnormal_vertex>', `
 float gk = uGrid.w;
 float gid = float(gl_InstanceID);
-vec2 aTile = modelMatrix[3].xz;   // the tile index rides in the mesh position (see below)
+vec2 aTile = modelMatrix[3].xz;
 vec2 cellIdx = uGrid.xy + aTile * gk + vec2(mod(gid, gk), floor(gid / gk));
 vec2 hA = uHash22(cellIdx + uShape.w), hB = uHash22(cellIdx + uShape.w + 17.17);
 vec2 pxz = (cellIdx + hA) * uGrid.z;
@@ -85,7 +78,6 @@ if (hB.x < dens && shrink > 0.0 && inMap > 0.0) {
   lp.xz = R * lp.xz;
   objectNormal = normal;
   objectNormal.xz = R * objectNormal.xz;
-  // wind: whole plant leans, tips flutter
   float t = uWind.w;
   float gust = 0.6 + 0.4 * sin(dot(pxz, uWind.xy) * 0.09 - t * 1.3);
   float sway = sin(t * (1.7 + hA.y) + pxz.x * 0.3 + pxz.y * 0.2);
@@ -119,7 +111,6 @@ outgoingLight += diffuseColor.rgb * 0.15 * reflectedLight.directDiffuse;
     return { name, mat, uniforms, tiles, spacing, baseSpacing: spacing, radius, baseRadius: radius, baseScale: [shape[0], shape[1]], k };
   };
 
-  //                          geometry                     spacing radius  [min, max scale, density, seed]  [forest, meadow, shrub, edge]
   const kinds = [
     makeKind('fern', buildPlant('fern', 11), 1.6, 44, [0.75, 1.35, 0.8, 3.1], [1, 0, 0, 0]),
     makeKind('shrub', buildPlant('bush', 12), 3.6, 72, [0.6, 1.5, 0.55, 7.7], [0, 0, 1, 0]),
@@ -132,7 +123,6 @@ outgoingLight += diffuseColor.rgb * 0.15 * reflectedLight.directDiffuse;
   return {
     group, kinds,
     configure(q) {
-      // density: closer / further apart cells (the per-kind probability stays), distance and height are multipliers
       const dens = q.bushes ?? 1, dist = q.bushDist ?? 1, hs = q.bushHeight ?? 1;
       enabled = q.vegetation !== false && dens > 0 && dist > 0;
       group.visible = enabled;

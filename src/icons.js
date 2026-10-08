@@ -1,4 +1,3 @@
-// Line icons for the menus (24 px grid, stroke = currentColor; shapes after Lucide, ISC licence).
 const P = {
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
   sliders: '<path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',

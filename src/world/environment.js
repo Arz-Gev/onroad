@@ -5,24 +5,6 @@ import { scatter, transmittance } from './atmosphere.js';
 import { ATMO, setVec4 } from '../render/shaderPatches.js';
 import { CascadedSunShadow, installCascadeShadowChunks } from '../render/cascadeShadow.js';
 
-// Time of day: sun / moon light (cascaded shadows), physically based sky + clouds + stars, height fog and
-// aerial perspective matched to the sky, image-based ambient light from the sky, and the post-processing
-// look (exposure / eye adaptation, bloom, grade) for day / dusk / night.
-//
-// Light units (three.js "physically correct" lights): the sun is ~3.5 lux-equivalent at noon. Lamps are
-// expected in candela with decay 2: a ~300 cd low beam gives ~1–3 units on the ground at 10–15 m, which
-// the night exposure renders as a well-lit mid tone, while moonlit ground (~0.1) stays dim and blue.
-
-// ---------------------------------------------------------------------------------------------------------
-// Time of day is one number: the hour, 0..24, continuous. Everything follows from it:
-//  * sun and moon positions come from arcs (a simple celestial-sphere model, below), not from interpolation;
-//  * the look (sky scale, fog, exposure, grade, ...) is a table of key frames by hour, interpolated with a
-//    monotone cubic (no overshoot, no kinks at the keys) and wrapping through midnight;
-//  * the three old presets live on as key frames at their hours and render exactly as they used to
-//    (QUICK_HOURS): day 13:00, dusk 19:30, night 23:00.
-// `setHour(h, { instant })` is the single entry point: instant for sliders / startup, animated (a 2.5 s sweep
-// forward through the hours) for the N key. A clock that advances by itself would just call setHour(h, { instant: true }).
-
 export const QUICK_HOURS = { day: 13, dusk: 19.5, night: 23 };
 export const QUICK_ORDER = ['day', 'dusk', 'night'];
 const ANIM_TIME = 2.5;
@@ -46,12 +28,6 @@ const NIGHT = {
   sat: 0.86, contrast: 0.1, vignette: 0.32, tint: [0.92, 0.97, 1.1], lift: [0.0, 0.0002, 0.0006],
 };
 
-// Sun and moon arcs: latitude, declination (deg), hour of upper transit (south), azimuth of south in the
-// game's frame (azimuth runs from +z towards +x; the old presets put the sunset at 250°, which makes south
-// 155.7° with the sun moving in increasing azimuth). The sun's arc is the one that comes closest to the
-// three presets (13:00 elev 40° az 145°, 19:30 elev 4.5° az 250°, 23:00 elev -16° az 250°); `pin` on a key
-// frame then moves the sun *exactly* onto the preset position at that hour, fading out towards the
-// neighbouring keys. The moon's arc passes exactly through the night preset (23:00 elev 38° az 70°).
 const SOUTH = 155.7;
 const SUN_ARC = { lat: 55, dec: 8, transit: 13.5, south: SOUTH };
 const MOON_ARC = { lat: 55, dec: 28, transit: 27.2, south: SOUTH };
@@ -60,29 +36,28 @@ function arcPos(a, hour) {
   const sl = Math.sin(a.lat * RAD), cl = Math.cos(a.lat * RAD), sd = Math.sin(a.dec * RAD), cd = Math.cos(a.dec * RAD);
   const H = (hour - a.transit) * 15 * RAD;
   const elev = Math.asin(sl * sd + cl * cd * Math.cos(H)) / RAD;
-  const A = Math.atan2(Math.sin(H) * cd, Math.cos(H) * sl * cd - sd * cl) / RAD;   // from south, towards west
+  const A = Math.atan2(Math.sin(H) * cd, Math.cos(H) * sl * cd - sd * cl) / RAD;
   return [elev, a.south + A];
 }
 const wrapDeg = a => ((a + 540) % 360 + 360) % 360 - 180;
 const wrapHour = h => ((h % 24) + 24) % 24;
 
-// key frames, ascending by hour (the table wraps from 23:00 round to 1:30)
 const KEYS = [
-  { h: 1.5, ...NIGHT, nightBase: [0.0009, 0.0013, 0.0025], cover: 0.3, fogD: 0.0013 },                                   // deep night
-  { h: 6, ...NIGHT, moonE: 0.14, nightBase: [0.0008, 0.0012, 0.0024], cover: 0.36, cloudAlpha: 0.82, stars: 0.5,           // pre-dawn
+  { h: 1.5, ...NIGHT, nightBase: [0.0009, 0.0013, 0.0025], cover: 0.3, fogD: 0.0013 },
+  { h: 6, ...NIGHT, moonE: 0.14, nightBase: [0.0008, 0.0012, 0.0024], cover: 0.36, cloudAlpha: 0.82, stars: 0.5,
     fogD: 0.001, haze: 0.00011, exposure: 1.7, key: 0.07, sat: 0.92, contrast: 0.12, vignette: 0.3,
     tint: [0.95, 0.98, 1.06], lift: [0, 0.00015, 0.0005] },
-  { h: 7.5, ...DUSK, fogD: 0.00068, fogMax: 0.95, tint: [0.98, 0.985, 0.985], pin: [4.5, 2 * SOUTH - 250] },             // dawn: dusk's mirror image
-  { h: 10, ...DAY, cover: 0.46, fogD: 0.00055, haze: 0.0001, exposure: 0.78, tint: [1.0, 0.995, 0.985], sat: 1.07 },     // morning
-  { h: 13, ...DAY, pin: [40, 145] },                                                                                      // day
-  { h: 18.25, ...DAY, sunE: 4.6, skyScale: 4.4, cover: 0.48, cloudAlpha: 0.98, fogD: 0.00052, fogFall: 0.0135,            // golden hour
+  { h: 7.5, ...DUSK, fogD: 0.00068, fogMax: 0.95, tint: [0.98, 0.985, 0.985], pin: [4.5, 2 * SOUTH - 250] },
+  { h: 10, ...DAY, cover: 0.46, fogD: 0.00055, haze: 0.0001, exposure: 0.78, tint: [1.0, 0.995, 0.985], sat: 1.07 },
+  { h: 13, ...DAY, pin: [40, 145] },
+  { h: 18.25, ...DAY, sunE: 4.6, skyScale: 4.4, cover: 0.48, cloudAlpha: 0.98, fogD: 0.00052, fogFall: 0.0135,
     haze: 0.000095, nightBase: [0.0001, 0.00015, 0.0003], exposure: 0.95, bloom: 0.052, bloomThr: 1.8, sat: 1.09,
     contrast: 0.15, vignette: 0.25, tint: [1.0, 0.975, 0.935], lift: [0, 0, 0.0002] },
-  { h: 19.5, ...DUSK, pin: [4.5, 250] },                                                                                  // dusk
-  { h: 20.5, ...NIGHT, moonE: 0.18, nightBase: [0.0007, 0.001, 0.002], cover: 0.4, cloudAlpha: 0.88, stars: 0.4,          // blue hour
+  { h: 19.5, ...DUSK, pin: [4.5, 250] },
+  { h: 20.5, ...NIGHT, moonE: 0.18, nightBase: [0.0007, 0.001, 0.002], cover: 0.4, cloudAlpha: 0.88, stars: 0.4,
     fogD: 0.0009, haze: 0.00011, fogMax: 0.96, exposure: 1.6, key: 0.07, bloomThr: 1.5, sat: 0.95, contrast: 0.13,
     vignette: 0.3, tint: [0.95, 0.975, 1.05], lift: [0, 0.0001, 0.0004] },
-  { h: 23, ...NIGHT, pin: [-16, 250] },                                                                                   // night
+  { h: 23, ...NIGHT, pin: [-16, 250] },
 ];
 for (const k of KEYS) {
   const [e, a] = arcPos(SUN_ARC, k.h);
@@ -90,7 +65,6 @@ for (const k of KEYS) {
   k.sunDA = k.pin ? wrapDeg(k.pin[1] - a) : 0;
 }
 
-// monotone cubic (Fritsch–Carlson) through the keys, periodic in 24 h
 const SCALARS = ['sunE', 'moonE', 'skyScale', 'cover', 'cloudAlpha', 'stars', 'fogD', 'fogFall', 'haze', 'fogMax', 'env',
   'exposure', 'auto', 'key', 'minEx', 'maxEx', 'bloom', 'bloomThr', 'sat', 'contrast', 'vignette', 'sunDE', 'sunDA'];
 const VECS = ['nightBase', 'tint', 'lift'];
@@ -122,11 +96,9 @@ function hermite(c, i, t) {
 const _origin = new THREE.Vector3();
 const dirFrom = (elev, azim, out = new THREE.Vector3()) => out.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elev), THREE.MathUtils.degToRad(azim));
 const sstep = THREE.MathUtils.smoothstep;
-// below the horizon the transmittance is zero (the planet blocks the ray); clamping the direction to the
-// horizon dip of the 400 m eye keeps the last dim red value there, and the sunUp / moonUp fades take it to zero
+
 const lowDir = d => [d[0], Math.max(d[1], -0.006), d[2]];
 
-// "night" for decisions (lamps visible, automatic headlights) switches with hysteresis on the continuous darkness
 const NIGHT_ON = 0.7, NIGHT_OFF = 0.45;
 
 export class Environment {
@@ -138,41 +110,39 @@ export class Environment {
     scene.add(this.sky.dome);
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.envRT = null;
-    this.envJob = null;                // the probe refresh in progress (see updateProbe)
+    this.envJob = null;
     this.slicedProbe = true;
 
-    // sun by day, moon by night: one cascaded-shadow light (2-4 cascades, see render/cascadeShadow.js)
     this.sun = new SunLight(0xffffff, 3);
     this.sun.castShadow = true;
     if (installCascadeShadowChunks()) {
       this.sun.shadow = new CascadedSunShadow();
       this.sun.shadow.attach(renderer);
-      this.sun.shadow.bias = 1.0;         // texels of the cascade
-      this.sun.shadow.normalBias = 1.5;   // texels of the cascade
-      this.sun.shadow.radius = 0.04;      // filter blur (m)
-    } else {                                // three's own two cascades, bias in depth units
+      this.sun.shadow.bias = 1.0;
+      this.sun.shadow.normalBias = 1.5;
+      this.sun.shadow.radius = 0.04;
+    } else {
       this.sun.shadow.bias = -0.0004;
       this.sun.shadow.normalBias = 0.05;
       this.sun.shadow.radius = 1.6;
     }
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.camera.far = 170;   // shadow range (m)
-    this.sun.shadow.camera.near = 20;   // caster ceiling above the view slice
+    this.sun.shadow.camera.far = 170;
+    this.sun.shadow.camera.near = 20;
     scene.add(this.sun);
-    // faint ground bounce for surfaces facing down (the sky probe covers the upper hemisphere)
+
     this.hemi = new THREE.HemisphereLight(0x000000, 0x5d4d36, 0);
     scene.add(this.hemi);
     scene.fog = new THREE.FogExp2(0xc3d3e3, 0.002);
 
-    // the hour being shown, the hour it is heading for, and the sweep between them (N key)
     this.hour = QUICK_HOURS.day;
     this.targetHour = this.hour;
     this.anim = null;
     this.dirty = true;
     this.cur = { nightBase: [0, 0, 0], tint: [1, 1, 1], lift: [0, 0, 0] };
-    this.darkness = 0;                 // 0 (day) .. 1 (night), continuous: for everything that fades with the light
-    this.night = false;                // darkness with hysteresis: only for on / off decisions (lamps, auto headlights)
-    this.onNightChange = null;         // (night) => void, when `night` flips
+    this.darkness = 0;
+    this.night = false;
+    this.onNightChange = null;
     this.sunDir = new THREE.Vector3();
     this.moonDir = new THREE.Vector3();
     this.lightDir = new THREE.Vector3(0, 1, 0);
@@ -182,13 +152,9 @@ export class Environment {
     this.flush();
   }
 
-  // true while the picture is still changing (a sweep, an hour set that has not been applied yet, or the
-  // ambient light probe catching up)
   get active() { return !!this.anim || this.dirty || this.envDirty || !!this.envJob; }
   get hourText() { const m = Math.round(this.hour * 60) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
 
-  // The one way to change the time. instant: the picture follows at once (sliders, startup, a future
-  // clock); otherwise a 2.5 s sweep forward through the hours (hours in between are shown on the way).
   setHour(h, { instant = false } = {}) {
     h = wrapHour(+h);
     if (!Number.isFinite(h)) return;
@@ -197,10 +163,9 @@ export class Environment {
     else this.anim = { from: this.hour, dist: wrapHour(h - this.hour), t: 0 };
     this.dirty = true;
   }
-  // apply a pending hour change right away (otherwise it happens in the next update())
+
   flush() { this.dirty = false; this.apply(); }
 
-  // the look at an hour: interpolated key frames + sun / moon positions from the arcs
   evalLook(hour, c = this.cur) {
     const [i, t] = keySegment(hour);
     for (const k of SCALARS) c[k] = hermite(CURVES[k], i, t);
@@ -214,7 +179,7 @@ export class Environment {
 
   apply() {
     const c = this.evalLook(this.hour);
-    this.darkness = 1 - sstep(c.sunElev, -10, 4.5);     // 0 from the dusk key frame's sun height up, 1 below -10°
+    this.darkness = 1 - sstep(c.sunElev, -10, 4.5);
     const night = this.night ? this.darkness > NIGHT_OFF : this.darkness > NIGHT_ON;
     const flipped = night !== this.night;
     this.night = night;
@@ -222,8 +187,6 @@ export class Environment {
     dirFrom(c.moonElev, c.moonAzim, this.moonDir);
     const sd = this.sunDir.toArray(), md = this.moonDir.toArray();
 
-    // Direct light: the sun and the moon add up; each fades with its own height around the horizon, so the
-    // hand-over at dusk and dawn is continuous (one light, the shadow direction follows the brighter one).
     const sunUp = sstep(c.sunElev, -2, 1.5);
     const moonUp = sstep(c.moonElev, -1, 3);
     const Ts = transmittance(lowDir(sd)), Tm = transmittance(lowDir(md));
@@ -238,11 +201,10 @@ export class Environment {
       .addScaledVector(this.sunDir, Math.max(...sunRGB) * sunUp)
       .addScaledVector(this.moonDir, Math.max(...moonRGB) * moonUp);
     if (this.lightDir.lengthSq() < 1e-12) this.lightDir.copy(this.sunDir); else this.lightDir.normalize();
-    // keep the shadow camera above the horizon (long dusk shadows stay bounded)
+
     if (this.lightDir.y < 0.1) { this.lightDir.y = 0.1; this.lightDir.normalize(); }
     this.sun.position.copy(this.lightDir);
 
-    // sky LUT
     const sky = this.sky, S = c.skyScale;
     const sunE = new THREE.Vector3(c.sunE * S, c.sunE * S, c.sunE * S);
     const moonE = new THREE.Vector3(c.moonE * S * moonTint[0] * 0.5, c.moonE * S * moonTint[1] * 0.5, c.moonE * S * moonTint[2] * 0.5);
@@ -255,8 +217,6 @@ export class Environment {
     su.uCover.value = c.cover;
     su.uCloudAlpha.value = c.cloudAlpha;
 
-    // Horizon colours for the fog / aerial perspective, from the same scattering model. Twilight keeps
-    // colouring the fog after the sun has set (until it is ~14° down); the moon adds its own.
     const parts = [];
     const wTwi = sstep(c.sunElev, -14, -2);
     if (wTwi > 0) parts.push({ L: sd, lE: c.sunE * S, tint: [1, 1, 1], w: wTwi });
@@ -271,11 +231,10 @@ export class Environment {
       Lf.x += L[0] * Math.max(...sd_); Lf.y += L[1] * Math.max(...sd_); Lf.z += L[2] * Math.max(...sd_);
     }
     for (let i = 0; i < 3; i++) { side[i] += c.nightBase[i] * 0.9; away[i] += c.nightBase[i] * 0.9; toward[i] += c.nightBase[i] * 0.9; zen[i] += c.nightBase[i]; }
-    // towards a low sun the horizon is many times brighter than elsewhere (Mie forward scattering): in
-    // the fog that turned every hill between the camera and a dusk sun into a flat orange wall
+
     for (let i = 0; i < 3; i++) toward[i] = Math.min(toward[i], side[i] * 2.2 + 1e-4);
     if (Lf.lengthSq() < 1e-18) Lf.copy(this.sunDir); else Lf.normalize();
-    // fog is slightly darker than the sky right at the horizon (it is lit, but also shadowed by terrain)
+
     const k = 0.92;
     setVec4(ATMO.atmoSun, Lf.x, Lf.y, Lf.z, c.fogFall);
     setVec4(ATMO.atmoAway, away[0] * k, away[1] * k, away[2] * k, 0);
@@ -285,7 +244,6 @@ export class Environment {
     this.scene.fog.density = c.fogD;
     this.scene.fog.color.setRGB(side[0], side[1], side[2]);
 
-    // clouds lit by the sun (moon) colour above the haze; ambient from the zenith sky
     const cloudSun = sstep(c.sunElev, -8, 1.5);
     const lit = Ts.map((v, i) => Math.pow(v, 0.6) * c.sunE * cloudSun + Math.pow(Tm[i], 0.6) * c.moonE * moonTint[i] * moonUp);
     su.uCloudLit.value.set(lit[0], lit[1], lit[2]).multiplyScalar(0.55);
@@ -296,17 +254,16 @@ export class Environment {
     this.hemi.groundColor.setRGB(0.36, 0.30, 0.22);
     this.hemi.intensity = (c.sunE * sunUp * Ts[1] + c.moonE * moonUp * Tm[1]) * 0.04;
 
-    // post-processing look
     if (this.pipeline) {
       const P = this.pipeline.params;
       P.exposure = c.exposure;
       P.auto = c.auto;
-      P.autoExposure = c.auto > 0.001;       // the eye-adaptation pass only runs while it matters
+      P.autoExposure = c.auto > 0.001;
       P.key = c.key; P.minExposure = c.minEx; P.maxExposure = c.maxEx;
       P.bloomStrength = c.bloom; P.bloomThreshold = c.bloomThr;
       P.saturation = c.sat; P.contrast = c.contrast; P.vignette = c.vignette;
       P.tint.setRGB(...c.tint); P.lift.setRGB(...c.lift);
-      this.pipeline.resetExposure = true;    // the picture follows the hour exactly, no adaptation lag
+      this.pipeline.resetExposure = true;
     }
     this.envDirty = true;
     if (flipped && this.onNightChange) this.onNightChange(night);
@@ -326,12 +283,6 @@ export class Environment {
     this.updateProbe(dt);
   }
 
-  // ---- ambient light / reflection probe (PMREM of the sky dome)
-  // three's fromScene() does the whole prefilter in one go: with the GGX filter that is about a full frame of
-  // GPU time, a hitch every refresh while the hour is changing. The same steps are run one per frame instead
-  // (scene to cube, then one roughness level per frame, ~15 frames), and the probe is swapped in when it is
-  // complete. These are three's own PMREMGenerator internals (pinned version); without them it falls back
-  // to fromScene().
   updateProbe(dt) {
     if (this.envJob) { this.probeStep(); return; }
     this.envTimer -= dt;
@@ -388,7 +339,6 @@ export class Environment {
     }
   }
 
-  // bring everything up to date right now (tests, screenshots): pending hour, running probe, a fresh probe
   settle() {
     if (this.dirty) this.flush();
     while (this.envJob) this.probeStep();

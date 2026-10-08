@@ -1,18 +1,5 @@
 import * as THREE from 'three';
 
-// Cascaded sun shadow with up to four cascades and explicit split distances.
-//
-// three's SunLightShadow (examples/jsm/lights) is fixed at two cascades with a computed split, so at 2048
-// texels per cascade the far cascade ends up with ~20 cm texels and the near one ~5 cm. This is the same
-// algorithm (bounding sphere of every view-frustum slice, texel snapping, fade band into the next cascade)
-// with the cascade count, the splits and the atlas layout made configurable. The renderer only talks to
-// the light shadow through the LightShadow interface, so the class is a drop-in replacement.
-//
-// The shader side is installed by installCascadeShadowChunks(): four cascade slots are always declared;
-// the unused ones carry an empty depth range and are not drawn, so they cost nothing.
-// Per cascade the `w` component of the cascade vec4 holds the texel size in metres, which the shader uses
-// to scale the depth bias, the normal offset and the filter radius with the resolution of that cascade.
-
 export const MAX_CASCADES = 4;
 
 const _lightOrientation = new THREE.Matrix4();
@@ -24,7 +11,6 @@ const _near = Array.from({ length: 4 }, () => new THREE.Vector3());
 const _far = Array.from({ length: 4 }, () => new THREE.Vector3());
 const _corners = Array.from({ length: 8 }, () => new THREE.Vector3());
 
-// the filter radius is clamped to [1, MAX_RADIUS] texels; the tile inset keeps it inside the atlas tile
 const MAX_RADIUS = 2.5;
 
 export class CascadedSunShadow extends THREE.LightShadow {
@@ -32,10 +18,10 @@ export class CascadedSunShadow extends THREE.LightShadow {
     super(new THREE.OrthographicCamera(-5, 5, 5, -5, 0.5, 500));
     this.isSunLightShadow = true;
     this.mapSize.set(2048, 2048);
-    // active cascades and the view distances (m) where each one hands over to the next
+
     this.cascades = 3;
     this.splits = [14, 50];
-    this.fade = 0.12;   // fraction of a cascade's depth range that blends into the next one
+    this.fade = 0.12;
 
     this._cameras = [];
     this._matrices = [];
@@ -54,20 +40,14 @@ export class CascadedSunShadow extends THREE.LightShadow {
     this._frameExtents.set(2, 2);
   }
 
-  // n active cascades (1..4); splits: n - 1 ascending distances. Two cascades fit an atlas of 2x1 tiles.
   configure(n, splits) {
     this.cascades = THREE.MathUtils.clamp(n | 0, 1, MAX_CASCADES);
     this.splits = splits.slice(0, this.cascades - 1);
     this._frameExtents.set(this.cascades > 2 ? 2 : this.cascades, this.cascades > 2 ? 2 : 1);
   }
 
-  // The renderer builds the shader uniform arrays from getViewportCount() (they must always hold the four
-  // declared cascades) and also draws one shadow pass per viewport. Inactive cascades must not be drawn:
-  // meshes with frustumCulled = false (trees, grass) would be submitted again for nothing. So during the
-  // shadow map render only the active cascades are reported (see attach()).
   getViewportCount() { return this._rendering ? this.cascades : MAX_CASCADES; }
 
-  // wrap the renderer's shadow map render so getViewportCount() knows when it is being asked for passes
   attach(renderer) {
     const sm = renderer.shadowMap, render = sm.render;
     sm.render = (...args) => {
@@ -85,11 +65,9 @@ export class CascadedSunShadow extends THREE.LightShadow {
     const n = this.cascades;
     const ext = this._frameExtents;
 
-    // inset the tiles so the filter cannot read across atlas tiles
     const insetX = Math.min(0.25, (Math.ceil(MAX_RADIUS) + 1) / this.mapSize.x);
     const insetY = Math.min(0.25, (Math.ceil(MAX_RADIUS) + 1) / this.mapSize.y);
     for (let i = 0; i < MAX_CASCADES; i++) {
-      // tile (col, row) in the atlas, filled row by row
       if (i < n) this._viewports[i].set((i % ext.x) + insetX, Math.floor(i / ext.x) + insetY, 1 - 2 * insetX, 1 - 2 * insetY);
       else this._viewports[i].set(0, 0, 1, 1);
     }
@@ -101,7 +79,6 @@ export class CascadedSunShadow extends THREE.LightShadow {
     const vNear = viewCamera.near;
     const vFar = Math.max(vNear + 1e-6, Math.min(camera.far, viewCamera.far));
 
-    // edges of the cascades along the view axis
     const edges = [vNear];
     for (let i = 1; i < n; i++) edges.push(THREE.MathUtils.clamp(this.splits[i - 1], vNear + 0.5, vFar - 0.5));
     edges.push(vFar);
@@ -112,7 +89,6 @@ export class CascadedSunShadow extends THREE.LightShadow {
     _lightOrientation.lookAt(_center.set(0, 0, 0), _lightDir, _up);
     _viewToLight.copy(_lightOrientation).transpose().multiply(viewCamera.matrixWorld);
 
-    // view frustum corners in light space (the rotation keeps distances, so fitting and snapping work here)
     const zNear = viewCamera.reversedDepth ? 1 : -1;
     const invProj = viewCamera.projectionMatrixInverse;
     let globalMaxZ = -Infinity;
@@ -125,7 +101,7 @@ export class CascadedSunShadow extends THREE.LightShadow {
       fc.applyMatrix4(_viewToLight);
       globalMaxZ = Math.max(globalMaxZ, nc.z, fc.z);
     }
-    // raise the ceiling one shadow range towards the light so casters outside the view still cast into it
+
     globalMaxZ += vFar;
     const shadowNear = camera.near;
 
@@ -133,13 +109,11 @@ export class CascadedSunShadow extends THREE.LightShadow {
       const data = this._cascadeData[i];
       if (i >= n) { data.set(1e10, -1e10, 1e10, 1); continue; }
 
-      // each cascade also covers the fade band of the previous one so both can be sampled while blending
       const begin = i === 0 ? vNear : this._cascadeData[i - 1].z;
       const end = edges[i + 1];
       const fadeStart = end - this.fade * (end - edges[i]);
       data.set(i === 0 ? -1e10 : begin, end, fadeStart, 1);
 
-      // bounding sphere of the slice: rotation stable
       const a0 = (begin - vNear) / (vFar - vNear), a1 = (end - vNear) / (vFar - vNear);
       _center.set(0, 0, 0);
       for (let j = 0; j < 4; j++) {
@@ -155,12 +129,11 @@ export class CascadedSunShadow extends THREE.LightShadow {
       }
       let radius = Math.sqrt(r2);
 
-      // snap to the texel grid: no shimmering when the camera moves
       radius /= 1 - 1 / resolution;
       const tx = 2 * radius / resX, ty = 2 * radius / resY;
       _center.x = Math.round(_center.x / tx) * tx;
       _center.y = Math.round(_center.y / ty) * ty;
-      data.w = 2 * radius / resolution;   // texel size in metres
+      data.w = 2 * radius / resolution;
 
       _center.z = globalMaxZ + shadowNear;
       _center.applyMatrix4(_lightOrientation);
@@ -180,11 +153,7 @@ export class CascadedSunShadow extends THREE.LightShadow {
   }
 }
 
-// getSunShadow with per-cascade texel-scaled bias, normal offset and filter radius.
-//   shadow.bias        depth bias in texels of the cascade (a fixed NDC bias was ~15 cm in the near cascade)
-//   shadow.normalBias  offset along the surface normal in texels, scaled by sin(angle to the light)
-//   shadow.radius      filter blur in metres; per cascade at least 1 and at most MAX_RADIUS texels
-const GET_SUN_SHADOW = /* glsl */`float getSunShadow(
+const GET_SUN_SHADOW =`float getSunShadow(
 			#if defined( SHADOWMAP_TYPE_PCF )
 				sampler2DShadow shadowMap,
 			#else
@@ -193,9 +162,7 @@ const GET_SUN_SHADOW = /* glsl */`float getSunShadow(
 			SunLightShadow sunLightShadow,
 			int shadowIndex
 		) {
-
 			vec3 worldPos = vSunShadowWorldPosition.xyz;
-			// materials without a vertex normal (the terrain computes its own) give a zero vector: treat it as up
 			float nLen = length( vSunShadowWorldNormal );
 			vec3 worldNormal = nLen > 1e-4 ? vSunShadowWorldNormal / nLen : vec3( 0.0, 1.0, 0.0 );
 			float viewDepth = vSunShadowWorldPosition.w;
@@ -203,17 +170,12 @@ const GET_SUN_SHADOW = /* glsl */`float getSunShadow(
 
 			float shadow = 1.0;
 
-			// back to front so each fade band blends with the shadow of the cascade behind it
 			for ( int i = SUN_LIGHT_CASCADES - 1; i >= 0; i -- ) {
-
-				// ( begin, end, fade start ) view depths and the texel size of the cascade
 				vec4 cascade = sunShadowCascade[ cascadeOffset + i ];
 
 				if ( viewDepth >= cascade.x && viewDepth < cascade.y ) {
-
 					mat4 m = sunShadowMatrix[ cascadeOffset + i ];
 					float texel = cascade.w;
-					// the third matrix row is the light axis scaled by 1 / depth range
 					vec3 zRow = vec3( m[ 0 ][ 2 ], m[ 1 ][ 2 ], m[ 2 ][ 2 ] );
 					float zLen = max( length( zRow ), 1e-8 );
 					float ndl = dot( worldNormal, zRow / zLen );
@@ -233,17 +195,14 @@ const GET_SUN_SHADOW = /* glsl */`float getSunShadow(
 					);
 
 					shadow = mix( cascadeShadow, shadow, smoothstep( cascade.z, cascade.y, viewDepth ) );
-
 				}
-
 			}
 
 			return shadow;
-
 		}`;
 
 let installed = false;
-// Call once before any material compiles (see installShaderPatches).
+
 export function installCascadeShadowChunks() {
   if (installed) return true;
   installed = true;

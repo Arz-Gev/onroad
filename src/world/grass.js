@@ -1,20 +1,10 @@
 import * as THREE from 'three';
 import { MAP_SIZE, CELL, N } from './terrain.js';
 
-// GPU grass: blades placed procedurally in the vertex shader on a camera-centred grid of world cells.
-// Every world cell always gets the same blade (hashed from the cell index), so blades never swim as the
-// grid follows the camera. Two layers: dense short-range blades and a sparser, wider layer further out,
-// each split into tiles that are frustum culled on the CPU. Density comes from the terrain's surface and
-// ground-data maps (no grass on trails, rock, mud, sand or under dense canopy); heights come from the
-// physics heightfield with the same triangle split, so blades stand exactly on the ground.
-// Wind (travelling gusts), the truck's wheels push blades aside, tyre tracks flatten them, and a few
-// blades are wild flowers.
-
 const HALF = MAP_SIZE / 2, NN = N + 1;
 const TILES = 8;
 
 function bladeGeometry(segments = 3) {
-  // aBlade: x = side (-1, 1, or 0 at the tip), y = t along the blade (0 root .. 1 tip)
   const v = [], idx = [];
   for (let s = 0; s < segments; s++) { const t = s / segments; v.push(-1, t, 0, 1, t, 0); }
   v.push(0, 1, 0);
@@ -27,23 +17,22 @@ function bladeGeometry(segments = 3) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('aBlade', new THREE.Float32BufferAttribute(v, 3));
   g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(v.length), 3));
-  // a normal attribute (values unused, the shader computes them): without one three compiles the
-  // material FLAT_SHADED and ignores the vertex normals
+
   g.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(v.length), 3));
   g.setIndex(idx);
   return g;
 }
 
-const COMMON_GLSL = /* glsl */`
+const COMMON_GLSL =`
 uniform highp sampler2D tHeight;
 uniform sampler2D tSplat, tData, tNoise, tTrack;
-uniform vec4 uMap;      // half, cell, NN, size
-uniform vec4 uGrid;     // base cell x, base cell z, spacing, cells per tile
-uniform vec4 uRad;      // fade out start, end; fade in start, end (far layer hand-over)
-uniform vec4 uShape;    // height, width, density, flower chance
-uniform vec4 uWind;     // dir x, dir z, strength, time
-uniform vec4 uPush[5];  // xyz, radius
-uniform vec4 uTrackP;   // origin x, z, size
+uniform vec4 uMap;
+uniform vec4 uGrid;
+uniform vec4 uRad;
+uniform vec4 uShape;
+uniform vec4 uWind;
+uniform vec4 uPush[5];
+uniform vec4 uTrackP;
 attribute vec3 aBlade;
 varying vec3 vGCol;
 varying vec3 vGFace;
@@ -72,7 +61,7 @@ export function buildGrass(terrainView, opts = {}) {
   const geo0 = bladeGeometry(2), geo1 = bladeGeometry(1);
 
   const makeLayer = (name, geoBase, spacing, radius, fadeIn, shape) => {
-    const k = Math.ceil(radius * 2 / spacing / TILES);   // cells per tile side
+    const k = Math.ceil(radius * 2 / spacing / TILES);
     const uniforms = {
       ...shared,
       uGrid: { value: new THREE.Vector4(0, 0, spacing, k) },
@@ -88,13 +77,12 @@ export function buildGrass(terrainView, opts = {}) {
         .replace('#include <beginnormal_vertex>', `
 float gk = uGrid.w;
 float gid = float(gl_InstanceID);
-vec2 aTile = modelMatrix[3].xz;   // the tile index rides in the mesh position (see below)
+vec2 aTile = modelMatrix[3].xz;
 vec2 cellIdx = uGrid.xy + aTile * gk + vec2(mod(gid, gk), floor(gid / gk));
 vec2 hA = gHash22(cellIdx), hB = gHash22(cellIdx + 17.17);
 vec2 bxz = (cellIdx + hA) * uGrid.z;
 float dCam = distance(bxz, cameraPosition.xz);
 float fade = (1.0 - smoothstep(uRad.x, uRad.y, dCam)) * smoothstep(uRad.z, uRad.w, dCam);
-// density (precomputed: grass surfaces, slope, clearings, canopy) -- most culled blades stop here
 float dens = textureLod(tData, (bxz + uMap.x + 0.5) / (uMap.w + 1.0), 0.0).a * uShape.z;
 float inMap = step(max(abs(bxz.x), abs(bxz.y)), uMap.x - 1.0);
 vec3 gPos = vec3(0.0, -1e4, 0.0);
@@ -108,7 +96,6 @@ if (hB.x < dens && fade > 0.0 && inMap > 0.0) {
   #else
   float gy = groundAt(bxz);
   #endif
-  // tyre tracks flatten the grass
   float track = textureLod(tTrack, (bxz - uTrackP.xy) / uTrackP.z + 0.5, 0.0).r;
   float tall = 0.45 + 0.95 * nz.g * nz.g;
   float flower = step(hC.x, uShape.w) * step(0.5, nz.b + 0.2);
@@ -116,7 +103,6 @@ if (hB.x < dens && fade > 0.0 && inMap > 0.0) {
   float wd = uShape.y * (0.7 + 0.6 * hC.y) * fade;
   float ang = hA.x * 6.2831853;
   vec2 facing = vec2(cos(ang), sin(ang));
-  // bend: natural lean + travelling wind gusts + pushed by the wheels
   vec2 bend = (hC - 0.5) * 0.5;
   float t = uWind.w;
   float ph = dot(bxz, uWind.xy) * 0.09 - t * 1.3;
@@ -138,12 +124,8 @@ if (hB.x < dens && fade > 0.0 && inMap > 0.0) {
   vec3 side = vec3(-facing.y, 0.0, facing.x);
   gPos = vec3(bxz.x, gy - 0.02, bxz.y) + side * aBlade.x * wd * 0.5 * (1.0 - tb * 0.85)
     + vec3(bend.x, 0.0, bend.y) * ht * tb * tb * 0.7 + vec3(0.0, ht * tb * (1.0 - 0.25 * min(dot(bend, bend), 1.0)), 0.0);
-  // lighting normal: mostly up (reads like a lawn) for both faces of the blade; the blade's own facing is
-  // added in the fragment shader with the face's sign (flipping the whole normal on back faces, as
-  // three does for DoubleSide, pointed it down: half the blades came out black)
   objectNormal = normalize(vec3(bend.x, 0.0, bend.y) * 0.3 + side * 0.25 * sign(aBlade.x + 0.001) + vec3(0.0, 1.0, 0.0));
   vGFace = mat3(viewMatrix) * (vec3(facing.x, 0.0, facing.y) * 0.45);
-  // colour: patch tint, per-blade variation, darker roots, lighter dry tips; flowers get a coloured head
   vec3 lush = vec3(0.115, 0.175, 0.04), dry = vec3(0.30, 0.27, 0.10), deep = vec3(0.07, 0.125, 0.03);
   vec3 col = mix(lush, deep, nz.a * 0.8);
   col = mix(col, dry, smoothstep(0.55, 0.85, nz.b) * 0.65 + hB.x * 0.12);
@@ -188,11 +170,10 @@ vec3 nonPerturbedNormal = normal;`)
       group.add(m);
       tiles.push(m);
     }
-    // spacing / cells per tile / blade width are re-laid out by configure() (density and distance settings)
+
     return { name, mat, uniforms, tiles, spacing, baseSpacing: spacing, baseWidth: shape[1], baseHeight: shape[0], radius, k, density: shape[2] };
   };
 
-  // dense near blades, then wider ones further out (cross-faded)
   const layers = [
     makeLayer('near', geo0, 0.1, 17, [-1, 0], [0.34, 0.065, 1.0, 0.0]),
     makeLayer('far', geo1, 0.24, 52, [10, 14.5], [0.32, 0.14, 1.0, 0.035]),
@@ -206,21 +187,19 @@ vec3 nonPerturbedNormal = normal;`)
       enabled = q.vegetation !== false && q.grass > 0;
       group.visible = enabled;
       scale = q.grass;
-      // fewer, wider blades on lower presets; shorter radius
+
       const r = q.grassRadius || 48;
       const near = layers[0], far = layers[1];
-      // density is the cell spacing (1 = a blade in every cell, above 1 closer together, below 1 further apart:
-      // thinning by probability instead would still draw, and discard, every cell)
+
       const dens = Math.max(scale, 0.01), fine = 1 / Math.sqrt(dens);
       const fineFar = 1 / Math.sqrt(scale <= 1 ? Math.max(scale * 1.1, 0.01) : scale);
       near.uniforms.uShape.value.z = 1;
       far.uniforms.uShape.value.z = 1;
-      // the near layer's 2-segment blades cost most per square metre (vertex bound): keep it short
+
       const rn = q.grassNear > 0 ? Math.min(q.grassNear, r) : Math.min(17 + Math.max(0, r - 46) * 0.12, r * 0.34);
       far.uniforms.uRad.value.set(r * 0.72, r, rn * 0.66, rn * 0.97);
       near.uniforms.uRad.value.set(rn * 0.7, rn, -1, 0);
-      // far blades past ~52 m get coarser (wider and further apart) so the blade count grows with the
-      // radius, not its square; grassFarGrow is the share of that growth that is applied (0 = none)
+
       const coarse = Math.max(1, r / 52) ** (q.grassFarGrow ?? 1);
       const hs = q.grassHeight ?? 1.5, ws = q.grassWidth ?? 1;
       const fw = q.grassFarWidth ?? 1, fsp = q.grassFarSpacing ?? 1;
@@ -236,7 +215,7 @@ vec3 nonPerturbedNormal = normal;`)
     },
     update(dt, camera, focus) {
       time += dt;
-      shared.uWind.value.w = time;   // shared with the trees and the undergrowth: runs with the grass off too
+      shared.uWind.value.w = time;
       if (!enabled) return;
       pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       frustum.setFromProjectionMatrix(pv);
@@ -244,7 +223,7 @@ vec3 nonPerturbedNormal = normal;`)
       for (const L of layers) {
         const s = L.spacing, k = L.k, R = L.uniforms.uRad.value.y;
         const n = k * TILES;
-        // base cell: grid centred on the camera, snapped to whole tiles so a tile never straddles the snap
+
         const bx = Math.floor((cx / s - n / 2) / k) * k, bz = Math.floor((cz / s - n / 2) / k) * k;
         L.uniforms.uGrid.value.x = bx; L.uniforms.uGrid.value.y = bz;
         for (const m of L.tiles) {
@@ -257,7 +236,7 @@ vec3 nonPerturbedNormal = normal;`)
         }
       }
     },
-    // wheels push the grass aside (world positions, radius in m)
+
     setPushers(list) {
       const P = shared.uPush.value;
       for (let i = 0; i < 5; i++) { const p = list[i]; if (p) P[i].set(p.x, p.y, p.z, p.r); else P[i].set(0, -1e5, 0, 0); }

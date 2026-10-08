@@ -5,13 +5,6 @@ import { icon } from './icons.js';
 import { theme, rgba } from './theme.js';
 import './tuning.css';
 
-// In-game tuning panel (Tab). The game keeps running: the mouse works the panel, the driving keys
-// still drive. Every change goes straight into the physics (Vehicle.retune); the readouts show what it
-// does to the car (ride frequency, damping, clearance and angles, axle loads, gear speeds, 0-100).
-//
-// Every car has its own setup, saved setups and panel state in localStorage (onroad.tuning.<car>.v1);
-// what the panel shows comes from the car's profile in vehicle/tuning.js (T.ui).
-
 const keyOf = car => `onroad.tuning.${car}.v1`;
 const DEG = Math.PI / 180;
 const get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
@@ -26,9 +19,6 @@ const GEAR_NAMES = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 const LIVE = { range: 'Low range', centreLock: 'Centre lock', rearLock: 'Rear locker', frontLock: 'Front locker', traction: 'Traction ctl', abs: 'ABS', rwd: '2WD' };
 const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['tyres'], susp: ['suspension'], brakes: ['brakes'], mass: ['mass'], steer: ['steering'], body: ['colliders'] };
 
-// Slider explanations (shown with the (i) button): what moving the slider left (smaller value) and right
-// (bigger value) does to the car, a few words each; n: an optional one-line note. U: the car's profile
-// (U.transfer = the off-road truck), ax: 'F' or 'R' for the per-axle rows.
 function lr(key, U, ax) {
   const truck = !!U.transfer, rear = ax === 'R';
   const gear = { l: 'выше скорость, слабее тяга', r: 'сильнее тяга, ниже скорость' };
@@ -67,11 +57,9 @@ function lr(key, U, ax) {
   return H[key] || '';
 }
 
-// slider rows: [path, label, range key, format, hint]
 const sl = (path, label, range, fmt, hint, extra = {}) => ({ type: 'slider', path, label, range, fmt, hint, ...extra });
 
 export class TuningPanel {
-  // api: { vehicle, settings, colliderView, action(id), notify(id, params), redraw() }
   constructor(api, car = 's15') {
     this.api = api;
     this.T = carTuning(car);
@@ -85,12 +73,12 @@ export class TuningPanel {
         if (s.setups && typeof s.setups === 'object') for (const [n, x] of Object.entries(s.setups).slice(0, 40)) this.state.setups[String(n).slice(0, 40)] = this.T.sanitize(x);
         if (s.ui) Object.assign(this.state.ui, s.ui);
       }
-    } catch { /* corrupt: stock */ }
+    } catch { }
     this.stockP = this.T.make();
-    this.runs = [];            // dyno results this session
+    this.runs = [];
     this.dirty = true;
     this.liveT = 0;
-    this.launch = null;        // in-game 0-100 timer
+    this.launch = null;
     this.lastLaunch = null;
   }
 
@@ -98,7 +86,6 @@ export class TuningPanel {
   get setup() { return this.state.setup; }
   save() { storage.set(this.key, JSON.stringify(this.state)); }
 
-  // apply the current setup to the physics. colliders: rebuild the chassis boxes too.
   apply({ snap = false, colliders = true } = {}) {
     const v = this.v, s = this.setup;
     this.T.applySetup(v.P, s);
@@ -110,7 +97,6 @@ export class TuningPanel {
     this.api.redraw?.();
   }
 
-  // ------------------------------------------------------------------ DOM
   build() {
     const el = document.createElement('aside');
     el.className = 'tune';
@@ -153,18 +139,17 @@ export class TuningPanel {
       const r = e.target.closest('input[type=range][data-path]');
       if (r) this.setValue(r.dataset.path, get(this.T.STOCK, r.dataset.path));
     });
-    // keep the driving keys for the truck: buttons and sliders give the focus back after a mouse use
+
     el.addEventListener('pointerup', () => setTimeout(() => {
       const a = document.activeElement;
       if (a && el.contains(a) && !a.matches('input[type=text], textarea, select')) a.blur();
     }, 0));
     el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
-    // the setups menu closes on a click elsewhere or Esc (before the game sees the key)
+
     document.addEventListener('pointerdown', e => { if (!this.menu.hidden && !e.target.closest('.tn-pick')) this.setMenu(false); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !this.menu.hidden) { e.stopPropagation(); e.preventDefault(); this.setMenu(false); } }, true);
   }
 
-  // section definitions: rows + a readout function
   sections() {
     const gearbox = this.api.settings.get('gearbox');
     const box = gearbox === 'manual' ? 'manual' : 'auto';
@@ -285,13 +270,11 @@ export class TuningPanel {
     return '';
   }
 
-  // slider explanation: { l, r, n } = what the left and right ends do, under each end; or plain text
   hintHTML(h) {
     if (typeof h === 'string') return `<div class="tn-h">${h}</div>`;
     return `<div class="tn-h tn-lr"><span>← ${h.l}</span><span>${h.r} →</span></div>${h.n ? `<div class="tn-h">${h.n}</div>` : ''}`;
   }
 
-  // collider editor for the selected box
   renderBoxEditor() {
     const cols = this.setup.colliders, i = this.state.ui.sel;
     const chips = this.el.querySelector('.tn-boxes');
@@ -309,7 +292,6 @@ export class TuningPanel {
   }
 
   renderSetups() {
-    // Stock is always listed; a setup that matches no entry shows as an unpickable "Custom" line
     const names = Object.keys(this.state.setups), cur = this.matchName();
     this.sel.querySelector('span').textContent = cur || 'Custom (unsaved)';
     this.sel.classList.toggle('custom', !cur);
@@ -328,7 +310,6 @@ export class TuningPanel {
     return '';
   }
 
-  // ------------------------------------------------------------------ events
   setValue(path, v) {
     if (!Number.isFinite(+v)) return;
     set(this.setup, path, +v);
@@ -348,7 +329,7 @@ export class TuningPanel {
     else if (t.dataset.boxK !== undefined) {
       const i = this.state.ui.sel, j = +t.dataset.boxK, box = this.setup.colliders[i].box;
       let v = +t.value;
-      if (j >= 3 && j <= 5) v /= 2;   // the slider shows the full size, the box stores half sizes
+      if (j >= 3 && j <= 5) v /= 2;
       box[j] = v;
       box[6] = Math.min(box[6], box[3] - 0.005, box[4] - 0.005, box[5] - 0.005);
       this.changed('colliders');
@@ -512,18 +493,17 @@ export class TuningPanel {
     else { this.setMenu(false); if (this.el.contains(document.activeElement)) document.activeElement.blur(); }
   }
 
-  // ------------------------------------------------------------------ readouts
   refresh(force = false) {
     if (!this.open || (!this.dirty && !force)) return;
     this.dirty = false;
     const v = this.v, P = v.P, s = this.setup, el = this.el, U = this.T.ui, ty = this.T.tyre;
     const gearbox = this.api.settings.get('gearbox');
-    // the gearbox decides which ratio sliders exist (M switches it with the panel open)
+
     if (this._gb !== gearbox) { const first = this._gb === undefined; this._gb = gearbox; if (!first) { const y = this.scroll.scrollTop; this.buildSections(); this.scroll.scrollTop = y; } }
     const A = this.an = analyze(P, s, gearbox);
     if (!this.stockAn || this.stockAn.gb !== gearbox) { this.stockAn = analyze(this.T.applySetup(this.T.make(), clone(this.T.STOCK)), this.T.STOCK, gearbox); this.stockAn.gb = gearbox; }
     const S = this.stockAn;
-    // sliders, chips, outputs
+
     for (const r of el.querySelectorAll('input[type=range][data-path]')) {
       const val = get(s, r.dataset.path);
       if (+r.value !== val) r.value = val;
@@ -538,14 +518,14 @@ export class TuningPanel {
     if (sz) sz.textContent = `${s.tyres.size}×${s.tyres.width}  ·  ${Math.round(this.T.tyreRadius(s.tyres.size) * 2000)} mm · ${Math.round(this.T.wheelMass(s.tyres.size, s.tyres.width))} kg`;
     const en = el.querySelector('.tn-engnote');
     if (en) en.textContent = this.T.ENGINES[s.engine.preset].note;
-    // summary strip
+
     const t100 = A.accel.t100;
     this.sum.innerHTML = [
       ['Power', `${f0(A.engine.hp)} hp`], ['0–100', t100 ? `≈ ${f1(t100)} s` : '—'], ['Top', `${f0(A.vmax)} km/h`],
       ['Weight', `${f0(A.mass)} kg`], ['F / R', `${f0(A.front * 100)} / ${f0(100 - A.front * 100)}`],
       U.offroadGeo ? ['Approach', `${f0(A.geo.approach)}°`] : ['Lock', `${f0(s.steering.lock)}°`],
     ].map(([k, x]) => `<div><span>${k}</span><b>${x}</b></div>`).join('');
-    // section summaries + readouts
+
     const ro = (id, html) => { const n = el.querySelector(`[data-ro="${id}"]`); if (n) n.innerHTML = html; };
     const ss = (id, txt) => { const n = el.querySelector(`[data-sec="${id}"] .tn-ss`); if (n) n.textContent = txt; };
     const kv = items => `<div class="tn-kv">${items.filter(Boolean).map(([k, x, cls = '']) => `<div class="${cls}"><span>${k}</span><b>${x}</b></div>`).join('')}</div>`;
@@ -618,7 +598,7 @@ export class TuningPanel {
       r.closest('.tn-row').querySelector('output').textContent = `${Math.round(val * 1000) / 10} cm`;
     }
     ss('measure', this.runs.length && this.runs[0].t100 ? `${f2(this.runs[0].t100)} s` : '');
-    // a section's "stock" button shows only once something in it differs from stock
+
     for (const [id, keys] of Object.entries(SECT)) {
       const n = el.querySelector(`[data-sec="${id}"]`);
       if (n) n.classList.toggle('mod', keys.some(k => JSON.stringify(s[k]) !== JSON.stringify(this.T.STOCK[k])));
@@ -633,7 +613,6 @@ export class TuningPanel {
     return this._defs[path];
   }
 
-  // driveline switches and the collider contact list, 5 times a second while open
   refreshLive() {
     const d = this.v.drivetrain, v = this.v, el = this.el;
     const st = { range: d.range === 'low', centreLock: d.centerLock, rearLock: d.rearLock, frontLock: d.frontLock, traction: v.tc, abs: v.abs, rwd: d.rwd };
@@ -654,7 +633,6 @@ export class TuningPanel {
     if (ln) { const h = this.lastLaunch ? `Your last launch in the game: <b>0–100 in ${f1(this.lastLaunch.t100)} s</b> (${escapeHTML(this.lastLaunch.label)})` : 'Floor it from a standstill: the panel times your own 0–100 too.'; if (ln.innerHTML !== h) ln.innerHTML = h; }
   }
 
-  // live per-corner suspension numbers (smoothed by the collider view while its suspension view is on)
   suspLiveHTML() {
     const cs = this.api.colliderView?.corners;
     if (!this.state.ui.suspView || !cs || cs.length < 4) return '';
@@ -702,7 +680,6 @@ export class TuningPanel {
     g.fillStyle = theme.cool; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
   }
 
-  // ------------------------------------------------------------------ 0-100 measurement
   runDyno() {
     if (this.dynoBusy) return;
     const gearbox = this.api.settings.get('gearbox');
@@ -753,15 +730,13 @@ export class TuningPanel {
     list.innerHTML = this.runs.map((r, i) => `<div><i style="background:${cols[i]}"></i>${escapeHTML(r.label)} <b>${r.t100 ? f2(r.t100) + ' s' : '—'}</b></div>`).join('');
   }
 
-  // ------------------------------------------------------------------ per frame (cheap when closed)
   update(dt, vehicle, raw) {
-    // the [ ] keys change the tyre pressures: keep the setup (and its save) in step
     const ps = vehicle.pressures, ts = this.setup.tyres;
     if (ps[0] !== ts.pressF || ps[1] !== ts.pressR) { ts.pressF = ps[0]; ts.pressR = ps[1]; this.save(); this.dirty = true; }
-    // the lockers key cycles the rear diff of a RWD car: the setup follows
+
     const df = this.setup.diff, rd = vehicle.drivetrain.rearDiff;
     if (df && vehicle.drivetrain.fixedRwd && rd !== df.type) { df.type = rd; this.save(); this.dirty = true; }
-    // in-game launch timer (always on: it only reads a few numbers)
+
     const kmh = vehicle.speed * 3.6;
     if (Math.abs(kmh) < 0.5 && raw.throttle < 0.05) this.launch = { armed: true, t: 0 };
     else if (this.launch?.armed) {

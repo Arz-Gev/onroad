@@ -1,16 +1,3 @@
-// Assetto Corsa .kn5 reader (model files for cars and tracks).
-//
-// Layout (little endian, strings are int32 length + UTF-8):
-//   "sc6969" magic, int32 version, int32 extra (version > 5)
-//   textures:  int32 count, each { int32 active, string name, int32 size, bytes (DDS/PNG/JPG) }
-//   materials: int32 count, each { string name, string shader, u8 blend, u8 alphaTested,
-//              int32 depthMode, int32 nProps × { string, f32 A, vec2 B, vec3 C, vec4 D },
-//              int32 nSamplers × { string slotName, int32 slot, string texture } }
-//   nodes:     one root, recursive { int32 class, string name, int32 nChildren, u8 active, body, children }
-//              class 1 = transform (4×4, row-vector DirectX layout = three.js column-major array)
-//              class 2 = mesh, class 3 = skinned mesh
-// Vertices: position 3f, normal 3f, uv 2f, tangent 3f (44 bytes); skinned adds 4 weights + 4 bone indices (f32).
-
 export function parseKn5(buf, { keepTextureData = true } = {}) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let p = 0;
@@ -55,7 +42,7 @@ export function parseKn5(buf, { keepTextureData = true } = {}) {
     }
     const nv = i32();
     const stride = skinned ? 76 : 44;
-    // Copy vertex data out (the source offset is not 4-byte aligned in general).
+
     const raw = new Float32Array(nv * (stride / 4));
     new Uint8Array(raw.buffer).set(buf.subarray(p, p + nv * stride));
     p += nv * stride;

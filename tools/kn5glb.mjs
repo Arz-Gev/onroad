@@ -1,14 +1,3 @@
-// Converts an unencrypted Assetto Corsa track (.kn5) into a GLB for the game.
-// - node transforms baked (AC's frame is three.js's: +y up, same handedness)
-// - one primitive per kn5 mesh, merged per material and per group (visual / physics surface)
-// - DDS textures decoded with macOS `sips`, then resized to webp
-// - materials: base colour from txDiffuse, alpha test for the AT / tree shaders, normal maps. Multilayer
-//   materials (road, grass, kerbs) keep their detail texture as a separate webp next to the GLB
-//   (<out>/<name>.webp); material extras.detail says which, the tile size in metres and its mean colour
-// - physics meshes (names like 1ROAD_main, 1GRASS_x, 1KERB, 1WALL_x) go to `phys_<SURFACE>` groups and are also
-//   rendered; everything else goes to `visual`. Scene extras list the surfaces.
-// Usage: node tools/kn5glb.mjs <track.kn5> <out.glb> [maxTexture]
-// CSP-encrypted kn5 files (car mods marked __AC_SHADERS_PATCH_KN5ENC_v1__) are refused.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,7 +13,6 @@ const maxTex = +(maxTexArg || 2048);
 const buf = fs.readFileSync(inPath);
 if (buf.subarray(-64).toString('latin1').includes('KN5ENC')) throw new Error('encrypted kn5: not supported');
 
-// ---------------------------------------------------------------- kn5 parse
 let p = 0;
 const i32 = () => { const v = buf.readInt32LE(p); p += 4; return v; };
 const f32 = () => { const v = buf.readFloatLE(p); p += 4; return v; };
@@ -44,7 +32,7 @@ for (let i = 0, n = i32(); i < n; i++) {
   materials.push(m);
 }
 const meshes = [];
-const markers = [];   // AC_START_n, AC_PIT_n, AC_HOTLAP_START_n, AC_TIME_n_L/R: spawn and timing points
+const markers = [];
 const readNode = (parentM) => {
   const cls = i32(), name = str(), nc = i32(); u8();
   let M = parentM;
@@ -59,7 +47,7 @@ const readNode = (parentM) => {
       pos[v * 3] = f32(); pos[v * 3 + 1] = f32(); pos[v * 3 + 2] = f32();
       nrm[v * 3] = f32(); nrm[v * 3 + 1] = f32(); nrm[v * 3 + 2] = f32();
       uv[v * 2] = f32(); uv[v * 2 + 1] = f32();
-      p += 12; // tangent
+      p += 12;
     }
     const ni = i32(), idx = new Uint32Array(ni);
     for (let k = 0; k < ni; k++) { idx[k] = buf.readUInt16LE(p); p += 2; }
@@ -76,7 +64,6 @@ const readNode = (parentM) => {
 readNode(new THREE.Matrix4());
 if (p !== buf.length) console.warn(`parsed ${p} of ${buf.length} bytes`);
 
-// ---------------------------------------------------------------- textures: DDS -> PNG
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kn5tex-'));
 const used = new Set(materials.flatMap(m => [m.maps.txDiffuse, m.maps.txNormal, m.maps.txDetailR].filter(Boolean)));
 const png = new Map();
@@ -89,10 +76,9 @@ for (const t of textures) {
     const out = src + '.png';
     execFileSync('sips', ['-s', 'format', 'png', src, '--out', out], { stdio: 'ignore' });
     png.set(t.name, fs.readFileSync(out));
-  } else png.set(t.name, t.data);   // png / jpg as is
+  } else png.set(t.name, t.data);
 }
 
-// ---------------------------------------------------------------- glTF
 const doc = new Document();
 const bufferG = doc.createBuffer();
 const scene = doc.createScene('track');
@@ -104,12 +90,12 @@ const tex = name => {
   return texCache.get(name);
 };
 const outDir = outPath.replace(/\.glb$/, '');
-const details = new Map();   // texture name -> file name, written after the GLB
+const details = new Map();
 const detailFile = name => { if (!details.has(name)) details.set(name, name.replace(/\.\w+$/, '').replace(/[^\w-]/g, '_') + '.webp'); return details.get(name); };
-const ALPHA_TEST = /AT|Tree|Grass/;   // ksPerPixelAT, ksPerPixelAT_NM, ksTree, ksGrass ...
+const ALPHA_TEST = /AT|Tree|Grass/;
 const gMats = materials.map(m => {
   const mt = doc.createMaterial(m.name).setRoughnessFactor(0.85).setMetallicFactor(0);
-  // ksDiffuse / ksAmbient are AC lighting gains, not albedo: the textures carry the colour
+
   mt.setBaseColorFactor([1, 1, 1, 1]);
   const d = tex(m.maps.txDiffuse);
   if (d) mt.setBaseColorTexture(d);
@@ -129,7 +115,6 @@ const gMats = materials.map(m => {
   return mt;
 });
 
-// physics surface from the mesh name: "1ROAD_main" -> ROAD; kerbs named inside a road mesh -> KERB
 const SURF = /^\d+([A-Z]+)/;
 const surfaceOf = name => {
   const s = SURF.exec(name)?.[1];
@@ -175,13 +160,13 @@ await doc.transform(
   prune(),
   textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [maxTex, maxTex] }),
 );
-// bounds for the game (spawn, camera far plane, minimap)
+
 const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
 for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) {
   const a = pr.getAttribute('POSITION'); const lo = a.getMin([]), hi = a.getMax([]);
   for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], lo[k]); max[k] = Math.max(max[k], hi[k]); }
 }
-// markers: position and the marker's local z axis (AC cars spawn facing it)
+
 const r3 = x => +x.toFixed(3);
 const markerOut = Object.fromEntries(markers.map(({ name, M }) => {
   const W = M;
@@ -191,8 +176,7 @@ const markerOut = Object.fromEntries(markers.map(({ name, M }) => {
 }));
 scene.setExtras({ source: path.basename(inPath), surfaces: Object.keys(surfaces), bounds: { min, max }, markers: markerOut });
 await io.write(outPath, doc);
-// detail textures: webp, max 1024, with their mean linear colour (the shader divides by it, so the detail
-// only adds texture and keeps the base map's brightness)
+
 fs.mkdirSync(outDir, { recursive: true });
 const toLin = c => Math.pow(c / 255, 2.2);
 for (const [name, file] of details) {

@@ -1,14 +1,4 @@
-// Drivetrain: engine -> clutch (manual) / torque converter (auto) -> gearbox -> 2-speed transfer case
-// with lockable centre diff -> front/rear axle diffs (lockable) -> 4 wheels.
-//
-// Rotating bodies: 0 engine crank, 1 gearbox input (clutch disc / turbine), 2..5 wheels FL FR RL RR.
-// Couplings are velocity constraints solved with projected Gauss-Seidel each substep:
-//   gear: w_in = G * mean(w_wheels)   (open diffs give equal torque split for free)
-//   clutch / lockup clutch: w_e = w_in, impulse limited by clutch capacity
-//   centre / axle lockers, brakes, park pawl, friction: more rows.
-// Torque sources (combustion, starter, torque converter, tyres) are applied explicitly.
-
-export const RPM = 30 / Math.PI; // rad/s -> rpm
+export const RPM = 30 / Math.PI;
 
 function table(t, x) {
   if (x <= t[0][0]) return t[0][1];
@@ -23,7 +13,6 @@ function table(t, x) {
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-// torque converter characteristics vs speed ratio
 const TC_K = [[0, 1], [0.3, 1.02], [0.5, 1.07], [0.7, 1.17], [0.8, 1.3], [0.87, 1.55], [0.92, 2.0], [0.96, 3.0], [0.985, 5.5], [1, 9]];
 const TC_TR = [[0, 2.1], [0.2, 1.86], [0.4, 1.6], [0.6, 1.35], [0.8, 1.1], [0.87, 1.0], [1, 1.0]];
 
@@ -38,18 +27,17 @@ const AUTO_SELECTOR = ['P', 'R', 'N', 'D'];
 export class Drivetrain {
   constructor(P) {
     this.P = P;
-    this.mode = 'auto';             // 'auto' | 'manual'
-    this.clutchAssist = true;       // manual: automatic clutch
-    this.manualGear = 0;            // -1 R, 0 N, 1..5
-    this.selector = 'D';            // auto selector
+    this.mode = 'auto';
+    this.clutchAssist = true;
+    this.manualGear = 0;
+    this.selector = 'D';
     this.autoGear = 1;
     this.range = 'high';
     this.centerLock = false;
     this.frontLock = false;
     this.rearLock = false;
-    this.rwd = false;               // front prop shaft disconnected: rear-wheel drive only (high range)
-    // P.layout 'rwd': a road car. No transfer case or front drive; the rear diff is P.rearDiff
-    // ('welded' | 'lsd' | 'open', the lockers key cycles it), the handbrake works on each rear wheel
+    this.rwd = false;
+
     this.fixedRwd = P.layout === 'rwd';
     this.rearDiff = 'open';
     if (this.fixedRwd) { this.rwd = true; this.rearDiff = P.rearDiff || 'welded'; this.rearLock = this.rearDiff === 'welded'; }
@@ -61,28 +49,27 @@ export class Drivetrain {
     this.stalled = false;
     this.starterTime = 0;
     this.crankTime = 0;
-    this.startGrace = 0;            // s after the engine catches with no stall check
+    this.startGrace = 0;
     this.cranking = false;
-    this.fire = 1;                  // share of cylinders firing: ramps 0 -> 1 as the engine catches
-    this.catchAt = 1;               // cranking time before the first cylinders fire (s)
-    this.sinceCatch = 10;           // s since it caught (start flare of the idle speed)
-    this.crankAng = 0;              // crank angle (rad), for the compression strokes while cranking
-    this.thr = 0.1;                 // effective (lagged) throttle
+    this.fire = 1;
+    this.catchAt = 1;
+    this.sinceCatch = 10;
+    this.crankAng = 0;
+    this.thr = 0.1;
     this.driverThrottle = 0;
     this.idleInt = 0;
     this.limiterCut = false;
-    this.clutchPedal = 0;           // 0 released (engaged), 1 pressed
+    this.clutchPedal = 0;
     this.lockup = 0;
-    this.shift = null;              // { phase, t, dur, target }
+    this.shift = null;
     this.sinceShift = 10;
-    this.grind = 0;                 // >0 while gears grind (for audio)
+    this.grind = 0;
     this.message = null;
 
-    // outputs
     this.Tcomb = 0;
     this.load = 0;
     this.engineAlpha = 0;
-    this.propTorque = [0, 0];       // front / rear pinion torque (Nm)
+    this.propTorque = [0, 0];
     this.wheelDrive = new Float64Array(4);
     this.clutchSlip = 0;
 
@@ -105,7 +92,6 @@ export class Drivetrain {
 
   get rpm() { return this.w[0] * RPM; }
 
-  // ratio from gearbox input to the wheels (signed), 0 = neutral
   ratioFor(mode, gear) {
     const P = this.P;
     const tr = (this.range === 'low' ? P.transfer.low : P.transfer.high) * P.finalDrive;
@@ -126,7 +112,6 @@ export class Drivetrain {
     return 0;
   }
 
-  // mean speed of the driven wheels (= transfer case output / ratio)
   wheelMean() { const w = this.w; return this.rwd ? 0.5 * (w[4] + w[5]) : 0.25 * (w[2] + w[3] + w[4] + w[5]); }
 
   gearLabel() {
@@ -135,11 +120,8 @@ export class Drivetrain {
     return this.selector;
   }
 
-  // events for the HUD: an id from src/messages.js (no UI text here). State changes (mode, range, locks,
-  // diff) are not events: the HUD shows the state itself. seq lets the HUD see a repeat of the same id.
   say(id, params) { this.message = { id, params, seq: (this.message?.seq || 0) + 1 }; }
 
-  // ---------------------------------------------------------------- commands
   toggleMode() {
     this.mode = this.mode === 'auto' ? 'manual' : 'auto';
     this.manualGear = 0; this.selector = 'N'; this.autoGear = 1; this.shift = null; this.lockup = 0;
@@ -184,7 +166,7 @@ export class Drivetrain {
       this.say('engineInGear');
       return;
     }
-    // cranking time before it fires: catchMin + random catchSpread (player-tuned: 0.35-0.5 s)
+
     this.starterTime = 3; this.crankTime = 0; this.catchAt = (E0.catchMin ?? 0.35) + (E0.catchSpread ?? 0.15) * Math.random();
   }
   stopEngine() { this.running = false; }
@@ -208,7 +190,7 @@ export class Drivetrain {
       this.shift = { phase: 'out', t: 0, target };
       return;
     }
-    // no assist: needs the clutch pedal, or a rev-matched clutchless shift
+
     if (this.clutchPedal > 0.6 || target === 0) { this.manualGear = target; this.sinceShift = 0; return; }
     const G = this.ratioFor('manual', target);
     const wIn = G * this.wheelMean();
@@ -218,17 +200,12 @@ export class Drivetrain {
     this.say('grind');
   }
 
-  // ---------------------------------------------------------------- per step logic
   control(h, ctl, speed) {
     const P = this.P, E = P.engine;
     this.grind = Math.max(0, this.grind - h);
     this.sinceShift += h;
     const rpm = this.rpm;
 
-    // ---- engine state
-    // The starter turns the engine at ~200 rpm, unevenly: it slows on every compression stroke (the
-    // "rrr-rrr"). After catchAt the first cylinders fire, more of them each revolution (fire ramps over
-    // ~0.35 s), the engine pulls away from the starter and flares (idle governor below), then settles.
     if (this.starterTime > 0) {
       this.starterTime -= h;
       this.crankTime += h;
@@ -249,20 +226,16 @@ export class Drivetrain {
     if (rpm > E.limiterRpm) this.limiterCut = true;
     else if (rpm < E.limiterRpm - 180) this.limiterCut = false;
 
-    // ---- transmission logic
     let throttle = ctl.throttle;
     if (this.mode === 'manual') throttle *= this.manualLogic(h, ctl);
     else throttle *= this.autoLogic(h, ctl, speed);
     this.driverThrottle = ctl.throttle;
 
-    // ---- idle governor + throttle lag
     let idleThr = 0;
     if (this.running) {
-      // start flare: the idle valve opens wide for the start, the engine runs up (startFlare 1000: peak ~2100
-      // rpm, player-tuned; recordings showed ~1500) and settles to idle over ~3 s (hold 1.1 s, then tau 0.9 s)
       const sc = this.sinceCatch, flare = (E.startFlare ?? 1000) * (sc < 1.1 ? 1 : Math.exp(-(sc - 1.1) / 0.9));
       const err = E.idleRpm + flare - rpm;
-      // (no integral while the cylinders are still catching: it would wind up and overshoot the flare)
+
       if (rpm < E.idleRpm + flare + 500 && this.fire >= 1) this.idleInt = clamp(this.idleInt + err * h, -150, 500);
       else this.idleInt *= Math.exp(-h * 2);
       idleThr = clamp(0.1 + 0.0011 * err + 0.0009 * this.idleInt, 0, 0.55);
@@ -272,7 +245,6 @@ export class Drivetrain {
     this.thr += (target - this.thr) * Math.min(1, h / tau);
   }
 
-  // returns throttle multiplier (for shift cuts)
   manualLogic(h, ctl) {
     let cut = 1;
     const sh = this.shift;
@@ -287,7 +259,7 @@ export class Drivetrain {
         } else {
           cut = Math.min(1, sh.t / 0.25);
           pedalTarget = this.autoClutchTarget(ctl);
-          // blend from fully pressed down to the target
+
           pedalTarget = Math.max(pedalTarget, 1 - sh.t / 0.28);
           if (sh.t > 0.3) this.shift = null;
         }
@@ -297,7 +269,6 @@ export class Drivetrain {
       const rate = pedalTarget > this.clutchPedal ? 10 : (sh ? 6 : 3.2);
       this.clutchPedal += clamp(pedalTarget - this.clutchPedal, -rate * h, rate * h);
     } else {
-      // keyboard clutch: pressing is quick, releasing passes through the bite point smoothly
       const rate = pedalTarget > this.clutchPedal ? 9 : 1.9;
       this.clutchPedal += clamp(pedalTarget - this.clutchPedal, -rate * h, rate * h);
     }
@@ -307,15 +278,15 @@ export class Drivetrain {
   autoClutchTarget(ctl) {
     if (this.manualGear === 0) return 0;
     if (this.cranking) return 1;
-    if (!this.running) return 0;           // parked in gear: engine compression holds the truck
-    if (ctl.handbrake > 0.5 && this.fixedRwd) return 0.8;   // handbrake turn: clutch in, the engine keeps revving
+    if (!this.running) return 0;
+    if (ctl.handbrake > 0.5 && this.fixedRwd) return 0.8;
     const rpm = this.rpm;
     const lineRpm = Math.abs(this.ratioFor('manual', this.manualGear) * this.wheelMean()) * RPM;
     let e;
     if (lineRpm > 1050 && rpm > 850) e = 1;
     else if (ctl.brake > 0.1 && ctl.throttle < 0.05 && this.range === 'high') e = 0;
     else if (ctl.throttle > 0.02) e = smooth(800, 1500, rpm) * (0.35 + 0.65 * smooth(0, 0.25, ctl.throttle));
-    else if (this.range === 'low') e = smooth(560, 760, rpm);   // idle crawl in low range
+    else if (this.range === 'low') e = smooth(560, 760, rpm);
     else e = 0;
     if (rpm < 600) e = 0;
     return 0.8 - 0.6 * e;
@@ -331,14 +302,13 @@ export class Drivetrain {
       else cut = 0.55 + 0.45 * (sh.t / P.auto.shiftTime);
     }
     if (this.selector === 'D' && !this.shift && this.sinceShift > 0.7) {
-      // output speed from the wheels, but don't let wheelspin drive upshifts (use ground speed too)
       const wmWheels = Math.max(0, this.wheelMean());
       const wmGround = Math.max(0, speed) / P.tire.radius;
       const wm = Math.min(wmWheels, wmGround * 1.25 + 0.5);
       const rpmAt = g => wm * Math.abs(this.ratioFor('auto', g)) * RPM;
       const t = ctl.throttle;
       const lowR = this.range === 'low' ? 250 : 0;
-      // shift points follow the engine (shiftRpm = full-throttle upshift; 4800 for the stock V8)
+
       const sr = P.engine.shiftRpm || 4800;
       const up = 1650 + lowR + (sr - 1650) * Math.pow(t, 1.3);
       const down = 1050 + (0.625 * sr - 1050) * Math.pow(t, 1.6);
@@ -349,28 +319,22 @@ export class Drivetrain {
         this.autoGear = g - 1; this.shift = { t: 0 }; this.sinceShift = 0;
       }
     }
-    // lock-up clutch
+
     const lineRpm = this.wheelMean() * this.currentRatio() * RPM;
     const want = this.running && this.selector === 'D' && this.autoGear >= 3 && !this.shift && lineRpm > 1250 && ctl.throttle < 0.9 ? 1 : 0;
     this.lockup += clamp(want - this.lockup, -6 * h, 1.5 * h);
     return cut;
   }
 
-  // ---------------------------------------------------------------- substep integration
-  // tireT: torque from tyre on each wheel (Nm, + = accelerates forward rotation)
-  // rrT: rolling-resistance bound per wheel (Nm), brakeT: service brake torque per wheel, hbT: handbrake torque at rear axle
-  // holdT: standstill hold of the transmission brake on the transfer output (all driven wheels)
   substep(h, tireT, rrT, brakeT, hbT, holdT = 0) {
     const P = this.P, E = P.engine, w = this.w, inv = this.inv, R = this.rows;
     const rpm = w[0] * RPM;
     const w0Old = w[0];
 
-    // ---- explicit torques
     let Tc = 0;
     if (this.running && !this.limiterCut) Tc = this.thr * this.fire * table(E.torque, Math.max(rpm, 0));
     this.Tcomb = Tc;
-    // compression strokes (4 per revolution) of the cylinders that aren't firing: they brake the crank
-    // and give the energy back on the way down, so a cranking or stopping engine turns unevenly
+
     this.crankAng = (this.crankAng + w[0] * h) % (4 * Math.PI);
     if (this.fire < 1) Tc -= (E.compressionTorque ?? 120) * (1 - this.fire) * Math.sin(4 * this.crankAng) * clamp(1.5 - Math.abs(rpm) / 800, 0, 1);
     if (this.cranking) Tc += E.starterTorque * clamp(1 - rpm / (E.starterRpm ?? 420), 0, 1);
@@ -384,7 +348,6 @@ export class Drivetrain {
     }
     for (let i = 0; i < 4; i++) w[2 + i] += h * tireT[i] * inv[2 + i];
 
-    // ---- constraint rows
     const A = this.active; A.length = 0;
     const G = this.currentRatio();
     if (G !== 0) {
@@ -409,14 +372,13 @@ export class Drivetrain {
     if (this.centerLock) A.push(R.center.set(0, 0, 0.5, 0.5, -0.5, -0.5).bound(Infinity));
     if (this.frontLock) A.push(R.front.set(0, 0, 1, -1, 0, 0).bound(Infinity));
     if (this.rearLock) A.push(R.rear.set(0, 0, 0, 0, 1, -1).bound(Infinity));
-    // clutch-type LSD: locking torque = preload + ramp x the torque through it (more on power than on coast)
+
     if (this.rearDiff === 'lsd') {
       const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 };
       const Tin = this.propTorque[1] * P.finalDrive;
       A.push(R.lsd.set(0, 0, 0, 0, 1, -1).bound((L.preload + Math.abs(Tin) * (Tin >= 0 ? L.power : L.coast)) * h));
     } else R.lsd.lambda = 0;
     if (this.fixedRwd) {
-      // per wheel: pulling it locks both rear wheels whatever the diff does
       R.hb.lambda = 0;
       if (hbT > 0) { A.push(R.hbL.set(0, 0, 0, 0, 1, 0).bound(hbT * h)); A.push(R.hbR.set(0, 0, 0, 0, 0, 1).bound(hbT * h)); }
       else { R.hbL.lambda = 0; R.hbR.lambda = 0; }
@@ -429,7 +391,7 @@ export class Drivetrain {
       } else bRows[i].lambda = 0;
       const rr = rRows[i].set(0, 0, 0, 0, 0, 0); rr.j[2 + i] = 1; A.push(rr.bound(rrT[i] * h));
     }
-    // engine friction + pumping losses (implicit Coulomb-style so a dead engine comes to rest cleanly)
+
     const thr = this.thr;
     let Tf = 12 + 0.0085 * Math.abs(rpm) + 1.2e-6 * rpm * rpm + (1 - thr) * (6 + 0.0105 * Math.abs(rpm));
     if (!this.running) Tf += 16;
@@ -438,7 +400,6 @@ export class Drivetrain {
 
     this.solve(A, 24);
 
-    // ---- outputs
     this.engineAlpha = (w[0] - w0Old) / h;
     const lg = G !== 0 ? R.gear.lambda : 0;
     const lc = this.centerLock ? R.center.lambda : 0;
@@ -461,16 +422,15 @@ export class Drivetrain {
 
   converter(we, wt) {
     const K0 = this.P.auto.stallK;
-    const visc = 0.06 * (we - wt);   // keeps a little coupling when both sides are nearly stopped
+    const visc = 0.06 * (we - wt);
     if (we >= wt) {
-      // forward flow: pump (engine) drives the turbine
       const base = Math.max(we, 0);
       const sr = base > 1e-3 ? clamp(wt / base, -1, 1) : -1;
       const K = K0 * table(TC_K, Math.max(sr, 0));
       const Tp = (base * RPM / K) ** 2 * (sr < 0 ? 1 - 0.6 * sr : 1) + visc;
       return { Tp, Tt: Tp * table(TC_TR, Math.max(sr, 0)) };
     }
-    // reverse flow (overrun / engine braking): turbine drives the pump
+
     const base = Math.max(wt, 0);
     const sr = base > 1e-3 ? clamp(we / base, -1, 1) : -1;
     const K = K0 * 1.25 * table(TC_K, Math.max(sr, 0));
@@ -485,7 +445,7 @@ export class Drivetrain {
       let k = 0;
       for (let b = 0; b < 6; b++) k += j[b] * j[b] * inv[b];
       row.m = k > 0 ? 1 / k : 0;
-      // warm start
+
       const l = clamp(row.lambda, row.lo, row.hi);
       row.lambda = l;
       if (l !== 0) for (let b = 0; b < 6; b++) w[b] += j[b] * inv[b] * l;

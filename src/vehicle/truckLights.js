@@ -1,23 +1,5 @@
 import * as THREE from 'three';
 
-// Truck lamps. Real headlamps shape their beam so the road is evenly lit from a few metres out to the
-// cut-off: very little light goes steeply down (near field), most goes just below the horizon (far
-// field). Ground illuminance from a lamp at height h is E = I * h / r^3, so a plain cone always gives a
-// blown-out pool at the bumper and nothing further away. Here every beam is a SpotLight with a
-// light cookie (SpotLight.map) that encodes the angular intensity distribution I(elevation, azimuth).
-//
-// Lights (all on the truck root, only made visible at night or when something is switched on, so the
-// day scene pays nothing for them):
-//   head  - one spot between the headlamps, low/high beam cookies, the only shadow caster
-//   bar   - roof light bar, wide long-range flood, no shadow (the source is above the eye anyway)
-//   rear  - one small dim spot for tail/brake glow and the reversing lamps
-// Lens glow comes from emissive materials; there are no point lights.
-
-// Irradiance shoulder for spot lights (only the truck has spot lights). Inverse-square makes a bank or a
-// tree trunk 8-10 m ahead, facing the lamps, ~100x brighter than the road at 30-60 m (I/d^2 vs I*h/r^3);
-// with a fixed exposure it blows out and blooms over the whole windscreen when you drive at a slope.
-// The eye adapts locally; this emulates it with a soft cap on each lamp's irradiance: E -> E/sqrt(1+(E/K)^2).
-// Road irradiance from the beams is ~1-7 (scene units), so the far throw is untouched.
 export const LAMP_KNEE = 9.0;
 function installLampShoulder() {
   const C = THREE.ShaderChunk;
@@ -32,8 +14,6 @@ installLampShoulder();
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// Cookie texture covering the spot's projection (fov = 2 * angle, square). fn(elev, azim) -> intensity.
-// Stored as half floats: the near-field values are 1/100 .. 1/1000 of the peak and band in 8 bits.
 function makeCookie(fn, angle, N = 512) {
   const T = Math.tan(angle);
   const vals = new Float32Array(N * N);
@@ -67,19 +47,17 @@ function makeCookie(fn, angle, N = 512) {
   return t;
 }
 
-// European-style low beam (right-hand traffic): flat cut-off just below the horizon on the left, 15°
-// kick-up on the right, hot zone right under the cut-off, wide soft foreground.
 function lowBeam(el, az) {
-  const d = -el; // depression below the horizon
+  const d = -el;
   const base = 0.009;
   const kick = az > 0.02 ? Math.min((az - 0.02) * 0.27, 0.026) : 0;
-  const cut = base - kick;                            // the kick-up only raises the edge
+  const cut = base - kick;
   const below = smooth(cut - 0.004, cut + 0.008, d);
   const dd = Math.max(0, d - base);
   const v = 1 / (1 + Math.pow(dd / 0.026, 2.6));
   const w = 0.24 + 0.8 * Math.min(1, dd / 0.22);
   const h = 0.3 * Math.exp(-((az / 0.09) ** 2)) + 0.7 * Math.exp(-((az / w) ** 2));
-  const near = 1 - smooth(0.32, 0.5, d);              // the bumper hides the steepest rays anyway
+  const near = 1 - smooth(0.32, 0.5, d);
   const stray = 0.014 * Math.exp(-((el / 0.3) ** 2)) * Math.exp(-((az / 0.5) ** 2));
   return below * v * h * near + (1 - below) * stray;
 }
@@ -90,7 +68,6 @@ function highBeam(el, az) {
   return lowBeam(el, az) + hot + fill * (el > -0.3 ? 1 : 0);
 }
 
-// Roof bar: four square lamps, two spot + two flood. Wide, long throw, little light straight down.
 function barBeam(el, az) {
   const h = 0.5 * Math.exp(-((az / 0.11) ** 2)) + 0.5 * Math.exp(-((az / 0.52) ** 2));
   let v;
@@ -101,10 +78,8 @@ function barBeam(el, az) {
 }
 
 export const BEAM = {
-  // peak intensities (candela in scene units; the scene is not photometric, these are tuned against the
-  // night preset so the road stays readable to ~60 m on low beam and ~150 m on high beam)
   low: 45000,
-  highGain: 1.0,  // high beam peak follows from the cookie (low peak * cookie max ratio)
+  highGain: 1.0,
   bar: 85000,
 };
 
@@ -125,7 +100,7 @@ export function buildLightRig(root, at) {
     L.visible = false;
     return L;
   };
-  // head: in front of the bumper hoop so no part of the truck is inside its frustum
+
   rig.head = spot(0xfff0da, at.head, [0, 0, -1], ANG, 0.08, 150);
   rig.head.map = cookies.low;
   rig.head.castShadow = true;
@@ -140,7 +115,6 @@ export function buildLightRig(root, at) {
   rig.bar.map = cookies.bar;
   rig.bar.userData.peak = BEAM.bar;
 
-  // rear: tail/brake glow + reversing lamps, aimed back and down
   rig.rear = spot(0xff2a10, at.rear, [0, -0.3, 1], 0.95, 0.8, 11);
   return rig;
 }
