@@ -51,6 +51,7 @@ function lr(key, U, ax) {
     'suspension.rebound': { l: 'качается после кочек', r: 'не качается, колесо может висеть' },
     'suspension.arb': rear ? { l: 'больше крен, зад цепче', r: 'зад легче уходит в занос' }
       : { l: 'больше крен, перед цепче', r: 'меньше крен, перед сползает', n: truck ? 'На камнях лучше 0.' : '' },
+    'suspension.rc': { l: 'больше крен', r: rear ? 'меньше крен, зад раньше срывается' : 'меньше крен, перед раньше сползает' },
     'suspension.travel': { l: 'раньше бьёт в отбойник', r: 'колесо выше в арке' },
     'brakes.force': { l: 'слабее', r: 'сильнее, легче заблокировать' },
     'brakes.bias': { l: 'больше на зад: может развернуть', r: 'больше на перед: стабильнее' },
@@ -203,8 +204,8 @@ export class TuningPanel {
       { id: 'susp', title: 'Suspension', rows: [
         { type: 'suspview' },
         sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), lr('suspension.lift', U)),
-        ...['k', 'bump', 'rebound', 'arb', 'travel'].flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel' }[k]} ${n}`, 'suspension.' + k,
-          v => (k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
+        ...['k', 'bump', 'rebound', 'arb', 'travel', 'rc'].filter(k => this.setup.suspension.front[k] !== undefined).flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel', rc: 'Roll centre' }[k]} ${n}`, 'suspension.' + k,
+          v => (k === 'rc' ? sgnCm(v) : k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
           lr('suspension.' + k, U, n)))),
       ] },
       { id: 'brakes', title: 'Brakes', rows: [
