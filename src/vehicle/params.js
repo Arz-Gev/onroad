@@ -158,8 +158,8 @@ export function makeS15Params() {
       relaxX: 0.15, relaxY: 0.4,
     },
 
-    steer: { maxAngle: 0.65, kingpinTrack: 1.40, ratio: 15, ackermann: 0.7, casterTrail: 0.0376, pneuTrail: 0.03, stiffness: 40000,
-      kpi: 13, kpiOffset: 0.06, inertia: 3, damping: 200, friction: 4 },
+    steer: { maxAngle: 0.65, kingpinTrack: 1.40, ratio: 15, ackermann: 0.7, casterTrail: 0.0376, pneuTrail: 0.03,
+      kpi: 13, kpiOffset: 0.06, inertia: 3, damping: 200, friction: 4, handStiffness: 8000, handDamping: 60, handTorque: 800 },
     brakes: { front: 1500, rear: 850, handbrake: 2500, handbrakeHold: 8000 },
     engine: {
       ...P.engine,

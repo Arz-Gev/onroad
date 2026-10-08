@@ -17,7 +17,7 @@ const GROUND_BIT = 0x0001, WHEEL_BIT = 0x0002;
 export const GROUP_GROUND = (GROUND_BIT << 16) | 0xffff;
 const GROUP_WHEEL_SIDE = (WHEEL_BIT << 16) | (0xffff & ~GROUND_BIT);
 
-export const STEER_ASSIST = { strong: { slip: 1.0, counter: 0.3 }, light: { slip: 1.6, counter: 0.8 } };
+export const STEER_ASSIST = { strong: { slip: 1.0 }, light: { slip: 1.6 } };
 const HAND_RATE = 23;
 
 export class Vehicle {
@@ -89,7 +89,7 @@ export class Vehicle {
     this.steerAngle = 0;
     this.steerComp = 0;
     this.alignM = 0; this.handsOff = false;
-    this.steerVel = 0;
+    this.steerVel = 0; this.hand = 0; this.grip = 1;
     this.revTimer = 0;
     this.gripG = 0.63; this.gripSlip = 0.16;
     this.steerAssist = 'strong';
@@ -238,38 +238,36 @@ export class Vehicle {
     const S = this.P.steer, v = Math.abs(this.speed), maxA = S.maxAngle;
     this.updateGripEstimate(h);
     const key = raw.steerKey ?? raw.steer;
-    const free = S.inertia != null && !raw.analogSteer && key === 0 && this.speed > -1;
+    const held = raw.analogSteer || key !== 0 || this.speed < -1;
     let target = 0;
     if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
-    else if (!free) {
+    else if (key !== 0) {
       let lim = maxA;
       const a = STEER_ASSIST[this.steerAssist];
       const vx = this.vel.dot(this.fwd);
-      if (a && vx > 3 && raw.steer !== 0) {
-        const vy = this.vel.dot(this.right), r = this.angVel.dot(this.up);
-        const L = this.P.wheelbase, cz = this.P.com[2];
-        const fa = Math.atan2(vy - r * (L / 2 + cz), vx), ra = Math.atan2(vy + r * (L / 2 - cz), vx);
-        const pk = this.gripSlip, d = Math.sign(raw.steer);
-        const slide = Math.max(0, Math.min(1, (d * ra / pk - 0.5)));
-        const useful = d * fa + pk * (a.slip + (a.counter - a.slip) * slide);
-        const k = Math.min(1, (vx - 3) / 3);
-        lim = maxA + (Math.max(0, Math.min(maxA, useful)) - maxA) * k;
+      if (a && vx > 3) {
+        const useful = this.P.wheelbase * this.gripG * G / (vx * vx) + a.slip * this.gripSlip;
+        lim = maxA + (Math.min(maxA, useful) - maxA) * Math.min(1, (vx - 3) / 3);
       }
       target = raw.steer * lim;
     }
+    const rate = HAND_RATE / S.ratio;
     let w = this.steerVel;
-    if (free) {
+    if (S.inertia != null) {
+      this.grip += ((held ? 1 : 0) - this.grip) * Math.min(1, h / (held ? 0.05 : 0.25));
+      this.hand += Math.max(-rate * h, Math.min(rate * h, (held ? target : this.steerAngle) - this.hand));
+      const Mh = this.grip * Math.max(-S.handTorque, Math.min(S.handTorque, S.handStiffness * (this.hand - this.steerAngle) - S.handDamping * w));
       const Fz = Math.max(0, this.wheels[0].Fn) + Math.max(0, this.wheels[1].Fn);
-      const M = -this.alignM - Fz * S.kpiOffset * Math.sin(S.kpi * DEG) * Math.sin(this.steerAngle) - S.friction * Math.tanh(w / 0.05);
+      const M = Mh - this.alignM - Fz * S.kpiOffset * Math.sin(S.kpi * DEG) * Math.sin(this.steerAngle) - S.friction * Math.tanh(w / 0.05);
       w = (w + h * M / S.inertia) / (1 + h * S.damping / S.inertia);
     } else {
-      const rate = HAND_RATE / S.ratio;
       const cmd = Math.max(-rate, Math.min(rate, (target - this.steerAngle) / 0.05));
       w += (cmd - w) * Math.min(1, h / 0.025);
     }
     let a = this.steerAngle + w * h;
     if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }
     this.steerAngle = a; this.steerVel = w;
+    const free = !held;
     this.handsOff = free;
     c.steer = this.steerAngle;
   }
@@ -634,7 +632,7 @@ export class Vehicle {
       M += w.Fy * (S.casterTrail + tp);
     }
     this.alignM = M;
-    if (!S.stiffness) { this.steerComp = 0; return; }
+    if (!S.stiffness || S.inertia != null) { this.steerComp = 0; return; }
 
     const target = this.handsOff ? 0 : Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
     this.steerComp += (target - this.steerComp) * Math.min(1, h * 60);

@@ -131,46 +131,46 @@ test('S15 lets go of the wheel after a corner: returns to centre and drives stra
   expect('heading drift after 2.5 s (deg/s)', Math.abs(state(c).yaw), 0, 1);
 });
 
-test('S15 power oversteer: more throttle, more slide; the wheel follows smoothly', expect => {
-  const peak = {}, jump = {};
-  for (const thr of [0.5, 0.7, 0.8, 1]) {
-    const c = makeCar();
-    launchTo(c, 50, 2);
-    run(c, 2, () => ({ steer: -1, throttle: holdSpeed(c, 50) }));
-    run(c, 0.6, () => ({ steer: -1, throttle: thr }));
-    let b = 0, j = 0, prev = c.v.steerAngle, counter = 0;
-    run(c, 2.5, () => {
-      const s = state(c);
-      b = Math.max(b, Math.abs(s.beta));
-      j = Math.max(j, Math.abs(c.v.steerAngle - prev) / H); prev = c.v.steerAngle;
-      if (s.beta > 8) counter = Math.max(counter, c.v.steerAngle / DEG);
-      return { throttle: thr };
-    });
-    peak[thr] = b; jump[thr] = j;
-    if (thr === 1) expect('full throttle: wheel countersteers by itself (deg)', counter, 10, 90);
-  }
-  expect('50 % throttle: body slip (deg)', peak[0.5], 0, 4);
-  expect('70 % throttle: body slip (deg)', peak[0.7], peak[0.5], 15);
-  expect('80 % throttle: body slip (deg)', peak[0.8], peak[0.7], 40);
-  expect('full throttle: body slip (deg)', peak[1], 25, 180);
-  expect('fastest hands-off steering motion (rad/s)', Math.max(...Object.values(jump)), 0, 3);
-});
-
-test('S15 countersteer key while the slide grows: wheels follow the front, barely past it', expect => {
+const slide = (thr, release = 0.6) => {
   const c = makeCar();
   launchTo(c, 50, 2);
   run(c, 2, () => ({ steer: -1, throttle: holdSpeed(c, 50) }));
-  run(c, 0.6, () => ({ steer: -1, throttle: 0.8 }));
-  let out = -90, prevB = 0;
+  run(c, release, () => ({ steer: -1, throttle: thr }));
   const v = c.v, L = v.P.wheelbase, cz = v.P.com[2];
-  run(c, 1.5, () => {
+  const trace = [];
+  run(c, 2.5, () => {
     const vx = v.vel.dot(v.fwd), vy = v.vel.dot(v.right), r = v.angVel.dot(v.up);
-    const fa = Math.atan2(vy - r * (L / 2 + cz), vx), b = state(c).beta;
-    if (b > 8 && b >= prevB) out = Math.max(out, (v.steerAngle + v.steerComp - fa) / DEG);
-    prevB = b;
-    return { steer: 1, throttle: 0.8 };
+    trace.push({ beta: state(c).beta, steer: v.steerAngle / DEG, fa: Math.atan2(vy - r * (L / 2 + cz), vx) / DEG });
+    return { throttle: thr };
   });
-  expect('wheels past the way the front moves (deg)', out, -10, 2.5);
+  return trace;
+};
+
+test('S15 power oversteer: more throttle, more slide', expect => {
+  const peak = {};
+  for (const thr of [0.5, 0.7, 1]) peak[thr] = Math.max(...slide(thr).map(p => Math.abs(p.beta)));
+  expect('50 % throttle: body slip (deg)', peak[0.5], 0, 4);
+  expect('70 % throttle: body slip (deg)', peak[0.7], peak[0.5], 20);
+  expect('full throttle: body slip (deg)', peak[1], 30, 180);
+});
+
+test('S15 key released in a slide: the wheel moves smoothly, no jump', expect => {
+  const tr = slide(0.8, 0.7);
+  let rate = 0, acc = 0;
+  for (let i = 2; i < tr.length; i++) {
+    const w1 = (tr[i].steer - tr[i - 1].steer) * DEG / H, w0 = (tr[i - 1].steer - tr[i - 2].steer) * DEG / H;
+    rate = Math.max(rate, Math.abs(w1)); acc = Math.max(acc, Math.abs(w1 - w0) / H);
+  }
+  expect('fastest steering motion (rad/s)', rate, 0, 1.6);
+  expect('largest steering acceleration (rad/s²)', acc, 0, 300);
+});
+
+test('S15 hands off in a slide: wheels line up with where the front goes, from small angles up', expect => {
+  const tr = slide(0.7).slice(Math.round(0.4 / H));
+  let err = 0, n = 0;
+  for (const p of tr) if (Math.abs(p.fa) > 0.5) { err = Math.max(err, Math.abs(p.steer - p.fa)); n++; }
+  expect('samples with the front moving sideways', n, 50, 1e9);
+  expect('largest gap between wheel and front direction (deg)', err, 0, 2);
 });
 
 test('S15 braking from 100 km/h with ABS: straight and short', expect => {
@@ -184,9 +184,20 @@ test('S15 braking from 100 km/h with ABS: straight and short', expect => {
   expect('heading change (deg)', Math.abs(c.v.yaw() - yaw0) / DEG, 0, 2);
 });
 
-test('S15 straight-line launch: 0-100 km/h', expect => {
-  const c = makeCar();
-  expect('time to 100 km/h, full throttle from 1st (s)', launchTo(c, 100, 5, 1), 3.5, 8);
+test('S15 0-100 km/h with a driver who keeps the rear tyres at peak slip (real 400 hp S15: about 5 s)', expect => {
+  const c = makeCar(), v = c.v, d = v.drivetrain;
+  run(c, 1, () => ({}));
+  d.requestShift(1);
+  while (d.shift) step(c, keyboard(c, {}));
+  let thr = 0.3, t = 0;
+  while (t < 15 && v.speed * 3.6 < 100) {
+    const vx = Math.max(0.5, v.vel.dot(v.fwd)), slip = (d.w[4] * v.R - vx) / Math.max(vx, 3);
+    thr = Math.max(0, Math.min(1, thr + (0.12 - slip) * H * 25));
+    if (d.manualGear < 5 && d.rpm > v.P.engine.limiterRpm - 400 && !d.shift) d.requestShift(1);
+    step(c, { throttle: thr, brake: 0, steer: 0, steerKey: 0, clutch: 0, handbrake: 0, analogSteer: false });
+    t += H;
+  }
+  expect('time to 100 km/h (s)', t, 4.3, 5.6);
 });
 
 test('welded diff ties the rear wheels; open diff lets them differ in a turn', expect => {
