@@ -7,8 +7,8 @@ import { D } from './truckDims.js';
 //
 // Two switches: 'physics' (Body and colliders tab) shows all of the above; 'susp' (Suspension tab) leaves
 // out the collision boxes, wheel cylinders and body contacts and adds the springs (colour: load), the
-// damper forces, static ride height and recent peak on the travel gauges, tyre load arrows and the axle
-// lines. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
+// damper forces, static ride height and recent peak on the travel gauges, tyre load arrows and the roll
+// centres. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
 //
 // Nothing exists until it is first switched on, and while off the group is invisible and update() returns
 // at once, so it costs nothing in normal play.
@@ -151,7 +151,7 @@ export class ColliderView {
     this.buildSusp();
   }
 
-  // suspension view: springs + damper bars (body frame), axle lines, roll centres, tyre load arrows (world)
+  // suspension view: springs + damper bars (body frame), roll centres, tyre load arrows (world)
   buildSusp() {
     this.suspBody = new THREE.Group(); this.body.add(this.suspBody);
     this.suspWorld = new THREE.Group(); this.world.add(this.suspWorld);
@@ -164,7 +164,6 @@ export class ColliderView {
       this.suspBody.add(spring, damper);
       return { spring, damper };
     });
-    this.axleLines = segs(2); this.suspBody.add(this.axleLines);
     this.rc = segs(4); this.rc.material.color.copy(COL.stop); this.suspBody.add(this.rc);
     const up = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]);
     const tick = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.07, 0, 0), new THREE.Vector3(0.07, 0, 0), new THREE.Vector3(0, 0, -0.07), new THREE.Vector3(0, 0, 0.07)]);
@@ -265,7 +264,7 @@ export class ColliderView {
       }
       if (susp) this.updateSuspCorner(w, i, ke, dt);
     });
-    if (susp) this.updateAxles();
+    if (susp) this.updateRollCentres();
   }
 
   updateBoxes(world, v) {
@@ -326,15 +325,9 @@ export class ColliderView {
     }
   }
 
-  // a line through the hub centres of each axle (axle articulation), roll centres of independent axles
-  updateAxles() {
+  // roll centres of independent axles (they follow the Roll centre sliders)
+  updateRollCentres() {
     const v = this.v, P = v.P;
-    const pa = this.axleLines.geometry.attributes.position;
-    for (let a = 0; a < 2; a++) for (let s = 0; s < 2; s++) {
-      v.hubLocal(v.wheels[a * 2 + s], _v);
-      pa.setXYZ(a * 2 + s, _v.x, _v.y, _v.z);
-    }
-    pa.needsUpdate = true;
     this.rc.visible = v.indep;
     if (v.indep) {
       const pr = this.rc.geometry.attributes.position;
