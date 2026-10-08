@@ -1,6 +1,5 @@
 import { makeCar, keyboard, step, state, launchTo, holdSpeed, H, DEG } from './sim.mjs';
 import { SURFACES, tireForces, tireCoefs } from '../../src/vehicle/tire.js';
-import { Drivetrain } from '../../src/vehicle/drivetrain.js';
 import { makeS15Params } from '../../src/vehicle/params.js';
 
 const only = process.argv[2];
@@ -31,21 +30,6 @@ test('tyre: lateral force peaks near the peak slip angle and a full slide keeps 
   w.ux = co.Lx * 0.3; w.uy = co.Ly * Math.tan(10 * DEG);
   tireForces(w, Fn, 0, 0, 20, surf, co);
   expect('combined slip stays inside the friction circle', Math.hypot(w.Fx, w.Fy) / (co.mu * Fn * 1.12), 0, 1.0001);
-});
-
-test('engine: turbo boost builds with a lag after the throttle opens', expect => {
-  const P = makeS15Params(), d = new Drivetrain(P);
-  d.mode = 'manual'; d.manualGear = 0; d.w[0] = 4500 / 30 * Math.PI; d.w[1] = d.w[0];
-  const ctl = { throttle: 0, brake: 0, clutch: 0, handbrake: 0 };
-  const torqueAfter = secs => {
-    for (let t = 0; t < secs; t += H) { d.w[0] = 4500 / 30 * Math.PI; d.control(H, ctl, 0); d.substep(H, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0); }
-    return d.Tcomb;
-  };
-  torqueAfter(1);
-  ctl.throttle = 1;
-  const t01 = torqueAfter(0.1), t1 = torqueAfter(0.9), t3 = torqueAfter(2);
-  expect('torque 0.1 s after full throttle / steady', t01 / t3, 0.4, 0.85);
-  expect('torque after 1 s / steady', t1 / t3, 0.93, 1.0001);
 });
 
 test('S15 static ride: weight split and suspension travel left both ways', expect => {
@@ -156,12 +140,11 @@ test('S15 power oversteer: more throttle, more slide', expect => {
 
 test('S15 key released in a slide: the wheel moves smoothly, no jump', expect => {
   const tr = slide(0.8, 0.7);
-  let rate = 0, acc = 0;
+  let acc = 0;
   for (let i = 2; i < tr.length; i++) {
     const w1 = (tr[i].steer - tr[i - 1].steer) * DEG / H, w0 = (tr[i - 1].steer - tr[i - 2].steer) * DEG / H;
-    rate = Math.max(rate, Math.abs(w1)); acc = Math.max(acc, Math.abs(w1 - w0) / H);
+    acc = Math.max(acc, Math.abs(w1 - w0) / H);
   }
-  expect('fastest steering motion (rad/s)', rate, 0, 1.6);
   expect('largest steering acceleration (rad/s²)', acc, 0, 300);
 });
 

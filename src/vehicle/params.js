@@ -167,7 +167,6 @@ export function makeS15Params() {
       idleRpm: 950, limiterRpm: 8200, redlineRpm: 7800, stallRpm: 300, shiftRpm: 7500,
       inertia: 0.16,
       torque: sr20.map(([r, t]) => [r, r === 0 ? 0 : Math.round(t * (1 + boost(r)) + friction(r))]),
-      turbo: { bar: 0.75, rpm: 3800, gamma: 2.75, spool: 0.35 },
     },
     clutch: { capacity: 800, inputInertia: 0.02 },
     manual: { ratios: [2.833, 1.764, 1.289, 1.0, 0.833], reverse: 3.818 },

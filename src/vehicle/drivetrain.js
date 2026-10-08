@@ -56,7 +56,6 @@ export class Drivetrain {
     this.sinceCatch = 10;
     this.crankAng = 0;
     this.thr = 0.1;
-    this.boost = 0;
     this.driverThrottle = 0;
     this.idleInt = 0;
     this.limiterCut = false;
@@ -244,12 +243,6 @@ export class Drivetrain {
     const target = this.running ? Math.max(throttle, idleThr) : 0;
     const tau = target > this.thr ? 0.065 : 0.11;
     this.thr += (target - this.thr) * Math.min(1, h / tau);
-    const tb = E.turbo;
-    if (tb) {
-      const want = this.running ? this.thr : 0;
-      const up = tb.spool * Math.min(4, Math.max(0.6, 4000 / Math.max(rpm, 500)));
-      this.boost += (want - this.boost) * Math.min(1, h / (want > this.boost ? up : 0.12));
-    } else this.boost = 1;
   }
 
   manualLogic(h, ctl) {
@@ -339,14 +332,7 @@ export class Drivetrain {
     const w0Old = w[0];
 
     let Tc = 0;
-    if (this.running && !this.limiterCut) {
-      Tc = this.thr * this.fire * table(E.torque, Math.max(rpm, 0));
-      const tb = E.turbo;
-      if (tb) {
-        const b = tb.bar * Math.min(1, Math.pow(Math.max(rpm, 0) / tb.rpm, tb.gamma));
-        Tc *= (1 + b * Math.min(1, this.boost / Math.max(this.thr, 1e-3))) / (1 + b);
-      }
-    }
+    if (this.running && !this.limiterCut) Tc = this.thr * this.fire * table(E.torque, Math.max(rpm, 0));
     this.Tcomb = Tc;
 
     this.crankAng = (this.crankAng + w[0] * h) % (4 * Math.PI);

@@ -62,24 +62,24 @@ const sr20 = (bar, refRpm, gamma = 2.75) => gross(SR20_NA.map(([r, t]) => [r, r 
 const S15_ENGINES = {
   street: {
     label: 'SR20DET', name: 'SR20DET, built street', fuel: 'petrol', note: 'Stock for this car: 0.75 bar, full boost from 3800 rpm. About 400 hp, revs to 8200.',
-    torque: sr20(0.75, 3800), turbo: { bar: 0.75, rpm: 3800, gamma: 2.75, spool: 0.35 },
+    torque: sr20(0.75, 3800),
     idleRpm: 950, limiterRpm: 8200, redlineRpm: 7800, shiftRpm: 7500, inertia: 0.16,
   },
   factory: {
     label: 'SR20 factory', name: 'SR20DET, factory', fuel: 'petrol', note: 'The Spec R as it left the factory: 250 PS, 275 Nm. Light, easy to balance.',
-    torque: sr20(0.05, 3500, 2.2), turbo: { bar: 0.05, rpm: 3500, gamma: 2.2, spool: 0.25 },
+    torque: sr20(0.05, 3500, 2.2),
     idleRpm: 850, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.16,
   },
   bigTurbo: {
     label: 'SR20 big turbo', name: 'SR20DET, big single turbo', fuel: 'petrol', note: '1.5 bar on a big single: lag below 4500, then about 570 hp. Hard to meter out.',
-    torque: sr20(1.5, 4800, 3.6), turbo: { bar: 1.5, rpm: 4800, gamma: 3.6, spool: 0.6 },
+    torque: sr20(1.5, 4800, 3.6),
     idleRpm: 1000, limiterRpm: 8600, redlineRpm: 8200, shiftRpm: 8000, inertia: 0.15,
   },
   jz: {
     label: '2JZ-GTE', name: '2JZ-GTE swap, single turbo', fuel: 'petrol', note: 'The classic swap: 3.0 straight six, about 650 Nm from 4000 rpm, 530 hp. Heavier nose, huge torque.',
     torque: gross([[0, 0], [500, 200], [1000, 250], [2000, 330], [3000, 480], [3500, 600], [4000, 640], [5000, 650],
       [6000, 620], [6500, 580], [7000, 520], [7500, 400], [8000, 150]]),
-    idleRpm: 800, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.24, turbo: { bar: 1.0, rpm: 4000, gamma: 3, spool: 0.5 },
+    idleRpm: 800, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.24,
   },
 };
 const S15_ENGINE_ORDER = ['street', 'factory', 'bigTurbo', 'jz'];
@@ -246,7 +246,7 @@ function makeProfile(id) {
     Object.assign(P.engine, {
       name: E.label, preset: s.engine.preset, fuel: E.fuel,
       torque: E.torque.map(([r, t]) => [r, t * k]),
-      idleRpm: E.idleRpm, inertia: E.inertia, turbo: E.turbo ?? null,
+      idleRpm: E.idleRpm, inertia: E.inertia,
       limiterRpm: E.limiterRpm + dr, redlineRpm: E.redlineRpm + dr, shiftRpm: E.shiftRpm + dr,
     });
     P.name = C.named(B, E, s.engine.preset);
