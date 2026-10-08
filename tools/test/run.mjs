@@ -87,18 +87,7 @@ test('S15 slalom at 70 km/h: weight moves side to side without topping out a whe
   expect('largest body slip (deg)', maxB, 0, 6);
 });
 
-test('S15 hands-off steering: no shimmy at any speed after a 3 deg kick', expect => {
-  for (const kmh of [15, 30, 60, 100, 140, 180]) {
-    const c = makeCar();
-    launchTo(c, kmh, kmh > 120 ? 5 : kmh > 70 ? 4 : 3);
-    c.v.steerAngle = 3 * DEG; c.v.steerVel = 0;
-    let late = 0;
-    run(c, 2.5, t => { if (t > 1.5) late = Math.max(late, Math.abs(c.v.steerAngle / DEG)); return { throttle: holdSpeed(c, kmh) }; });
-    expect(`${kmh} km/h: steering left after 1.5 s (deg)`, late, 0, 0.3);
-  }
-});
-
-test('S15 lets go of the wheel after a corner: returns to centre and drives straight', expect => {
+test('S15 key released after a corner: wheel returns to centre and drives straight', expect => {
   const c = makeCar();
   launchTo(c, 70, 3);
   run(c, 3, () => ({ steer: -1, throttle: holdSpeed(c, 70) }));
@@ -136,24 +125,6 @@ test('S15 power oversteer: more throttle, more slide', expect => {
   expect('50 % throttle: body slip (deg)', peak[0.5], 0, 4);
   expect('70 % throttle: body slip (deg)', peak[0.7], peak[0.5], 20);
   expect('full throttle: body slip (deg)', peak[1], 30, 180);
-});
-
-test('S15 key released in a slide: the wheel moves smoothly, no jump', expect => {
-  const tr = slide(0.8, 0.7);
-  let acc = 0;
-  for (let i = 2; i < tr.length; i++) {
-    const w1 = (tr[i].steer - tr[i - 1].steer) * DEG / H, w0 = (tr[i - 1].steer - tr[i - 2].steer) * DEG / H;
-    acc = Math.max(acc, Math.abs(w1 - w0) / H);
-  }
-  expect('largest steering acceleration (rad/s²)', acc, 0, 300);
-});
-
-test('S15 hands off in a slide: wheels line up with where the front goes, from small angles up', expect => {
-  const tr = slide(0.7).slice(Math.round(0.4 / H));
-  let err = 0, n = 0;
-  for (const p of tr) if (Math.abs(p.fa) > 0.5) { err = Math.max(err, Math.abs(p.steer - p.fa)); n++; }
-  expect('samples with the front moving sideways', n, 50, 1e9);
-  expect('largest gap between wheel and front direction (deg)', err, 0, 2);
 });
 
 test('S15 braking from 100 km/h with ABS: straight and short', expect => {

@@ -114,7 +114,7 @@ export class Input {
   reset() {
     this.keys.clear();
     this.pressed.clear();
-    this._thr = this._brk = this._steer = 0;
+    this._thr = this._brk = 0;
     this.mouse.down = false;
   }
 
@@ -130,11 +130,8 @@ export class Input {
     let thr = ramp(this._thr || 0, up, 6.5, 10);
     let brk = ramp(this._brk || 0, dn, 8, 12);
     this._thr = thr; this._brk = brk;
-    let steer = this._steer || 0;
     const target = (rt ? 1 : 0) - (lt ? 1 : 0);
-    const rate = target === 0 ? 6 : (Math.sign(target) !== Math.sign(steer) && steer !== 0 ? 8 : 4);
-    steer += Math.max(-rate * dt, Math.min(rate * dt, target - steer));
-    this._steer = steer;
+    let steer = target;
     let clutch = this.down('ShiftLeft', 'ShiftRight') ? 1 : 0;
     let hb = this.down('Space') ? 1 : 0;
     r.analogSteer = false;

@@ -87,9 +87,6 @@ export class Vehicle {
 
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
-    this.steerComp = 0;
-    this.alignM = 0; this.handsOff = false;
-    this.steerVel = 0; this.hand = 0; this.grip = 1;
     this.revTimer = 0;
     this.gripG = 0.63; this.gripSlip = 0.16;
     this.steerAssist = 'strong';
@@ -238,7 +235,6 @@ export class Vehicle {
     const S = this.P.steer, v = Math.abs(this.speed), maxA = S.maxAngle;
     this.updateGripEstimate(h);
     const key = raw.steerKey ?? raw.steer;
-    const held = raw.analogSteer || key !== 0 || this.speed < -1;
     let target = 0;
     if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
     else if (key !== 0) {
@@ -252,23 +248,7 @@ export class Vehicle {
       target = raw.steer * lim;
     }
     const rate = HAND_RATE / S.ratio;
-    let w = this.steerVel;
-    if (S.inertia != null) {
-      this.grip += ((held ? 1 : 0) - this.grip) * Math.min(1, h / (held ? 0.05 : 0.25));
-      this.hand += Math.max(-rate * h, Math.min(rate * h, (held ? target : this.steerAngle) - this.hand));
-      const Mh = this.grip * Math.max(-S.handTorque, Math.min(S.handTorque, S.handStiffness * (this.hand - this.steerAngle) - S.handDamping * w));
-      const Fz = Math.max(0, this.wheels[0].Fn) + Math.max(0, this.wheels[1].Fn);
-      const M = Mh - this.alignM - Fz * S.kpiOffset * Math.sin(S.kpi * DEG) * Math.sin(this.steerAngle) - S.friction * Math.tanh(w / 0.05);
-      w = (w + h * M / S.inertia) / (1 + h * S.damping / S.inertia);
-    } else {
-      const cmd = Math.max(-rate, Math.min(rate, (target - this.steerAngle) / 0.05));
-      w += (cmd - w) * Math.min(1, h / 0.025);
-    }
-    let a = this.steerAngle + w * h;
-    if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }
-    this.steerAngle = a; this.steerVel = w;
-    const free = !held;
-    this.handsOff = free;
+    this.steerAngle = Math.max(-maxA, Math.min(maxA, this.steerAngle + Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle))));
     c.steer = this.steerAngle;
   }
 
@@ -315,7 +295,7 @@ export class Vehicle {
   }
 
   steerAngles() {
-    const d = this.steerAngle + this.steerComp;
+    const d = this.steerAngle;
     if (Math.abs(d) < 1e-4) return [d, d];
     const L = this.P.wheelbase, T = this.P.steer.kingpinTrack;
     const Rt = L / Math.tan(Math.abs(d));
@@ -619,23 +599,6 @@ export class Vehicle {
     }
 
     for (let i = 0; i < 4; i++) this.wheels[i].spin += dt.w[2 + i] * h;
-    this.steerCompliance(h);
-  }
-
-  steerCompliance(h) {
-    const S = this.P.steer;
-    let M = 0;
-    for (let i = 0; i < 2; i++) {
-      const w = this.wheels[i];
-      if (w.Fn <= 0) continue;
-      const tp = S.pneuTrail * Math.max(0, 1 - w.slipNorm);
-      M += w.Fy * (S.casterTrail + tp);
-    }
-    this.alignM = M;
-    if (!S.stiffness || S.inertia != null) { this.steerComp = 0; return; }
-
-    const target = this.handsOff ? 0 : Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
-    this.steerComp += (target - this.steerComp) * Math.min(1, h * 60);
   }
 
   hubPenDot(w) {
