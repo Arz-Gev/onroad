@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { D } from './truckDims.js';
 
-// X-ray view of the physics: chassis collision boxes, wheel side cylinders, tyre outlines against the
-// arch tops, suspension travel gauges, tyre contact patches and the points where the body touches the
+// X-ray view of the physics: chassis collision boxes, wheel side cylinders, suspension travel gauges,
+// tyre contact patches and the points where the body touches the
 // ground or an obstacle (the touching box turns red). Drawn on top of everything (no depth test).
 //
 // Two switches: 'physics' (Body and colliders tab) shows all of the above; 'susp' (Suspension tab) leaves
@@ -18,7 +18,6 @@ const COL = {
   hit: new THREE.Color(1.0, 0.22, 0.15),
   sel: new THREE.Color(1.0, 0.72, 0.28),
   wheel: new THREE.Color(0.55, 0.6, 1.0),
-  tyre: new THREE.Color(0.85, 0.9, 0.95),
   ok: new THREE.Color(0.43, 0.86, 0.55),
   stop: new THREE.Color(1.0, 0.7, 0.28),
   cool: new THREE.Color(0.35, 0.7, 1.0),
@@ -54,15 +53,6 @@ const lineMat = (color, opacity = 1) => new THREE.LineBasicMaterial({ color, tra
 const fillMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
 const onTop = o => { o.renderOrder = 999; o.frustumCulled = false; return o; };
 
-// unit circle in the y-z plane (a wheel seen from the side), n segments
-function circle(n = 48) {
-  const p = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2, b = ((i + 1) / n) * Math.PI * 2;
-    p.push(0, Math.cos(a), Math.sin(a), 0, Math.cos(b), Math.sin(b));
-  }
-  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-}
 // cylinder outline along x: two rims and four lines
 function cylinderLines(n = 32) {
   const p = [];
@@ -125,19 +115,13 @@ export class ColliderView {
     this.scene.add(this.world);
     this.boxGroup = new THREE.Group(); this.body.add(this.boxGroup);
     this.boxes = [];
-    // wheels: side cylinder, tyre outline, travel gauge
-    this.cyl = cylinderLines(); this.circ = circle();
+    // wheels: side cylinder, travel gauge
+    this.cyl = cylinderLines();
     this.wheels = this.v.wheels.map(() => {
       const cyl = onTop(new THREE.LineSegments(this.cyl, lineMat(COL.wheel, 0.75)));
-      const tyre = onTop(new THREE.LineSegments(this.circ, lineMat(COL.tyre, 0.9)));
-      this.body.add(cyl, tyre);
-      return { cyl, tyre };
+      this.body.add(cyl);
+      return { cyl };
     });
-    // arch tops: a short line over each wheel at D.ARCH_TOP
-    const ap = [];
-    for (const z of [D.ARCH_F, D.ARCH_R]) for (const x of [-1, 1]) ap.push(x * 0.78, D.ARCH_TOP, z - 0.34, x * 0.78, D.ARCH_TOP, z + 0.34);
-    this.arches = onTop(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(ap, 3)), lineMat(0xffffff, 0.6)));
-    this.body.add(this.arches);
     // travel gauges, outside the body next to each wheel: droop..bump, bump stop zone, current position
     this.gauges = this.v.wheels.map(w => {
       const g = new THREE.Group();
@@ -244,7 +228,7 @@ export class ColliderView {
     this._t = now;
     // which chassis boxes touch something, and where
     if (phys) this.updateBoxes(world, v);
-    // wheels: side cylinders (body frame, same pose as Vehicle.updateGeometry), tyre outlines, gauges
+    // wheels: side cylinders (body frame, same pose as Vehicle.updateGeometry), gauges
     const R = v.R, ke = dt ? 1 - Math.exp(-dt / 0.12) : 1;
     v.wheels.forEach((w, i) => {
       const ax = w.axle, ap = ax.p, o = this.wheels[i];
@@ -256,11 +240,6 @@ export class ColliderView {
         const cr = R - 0.12 * R / 0.42;
         o.cyl.scale.set(P.tire.width * 0.42, cr, cr);
       }
-      o.tyre.position.copy(_v); o.tyre.quaternion.copy(_q2); o.tyre.scale.setScalar(R);
-      // tyre top against the arch top (body frame): red when it reaches the arch
-      const top = _v.y + R;
-      const rub = top > D.ARCH_TOP - 0.01;
-      o.tyre.material.color.copy(rub ? COL.hit : COL.tyre);
       // side cylinder touching a rock / log / tree
       if (phys) {
         const hitW = w.sideCollider ? touchPoints(world, w.sideCollider) > 0 : false;

@@ -261,7 +261,7 @@ export class TuningPanel {
       <div class="tn-h">The same switches as the keys. Low range and 2WD need a stop.</div></div>`;
     if (r.type === 'colliders') return `<div class="tn-row">
         <div class="tn-l"><span>Show physics</span><button type="button" class="switch" data-act="overlay" role="switch" aria-label="Show physics"><span class="knob"></span></button></div>
-        <div class="tn-h">Collision boxes (red where they touch), wheel side cylinders, tyres against the arch tops, suspension travel (orange: bump stop) and the tyre contact patches (size: load, colour: slip).</div>
+        <div class="tn-h">Collision boxes (red where they touch), wheel side cylinders, suspension travel (orange: bump stop) and the tyre contact patches (size: load, colour: slip).</div>
         <div class="tn-touch"></div>
       </div>
       <div class="tn-row"><div class="tn-l"><span>Collision boxes</span></div><div class="tn-chips tn-boxes"></div></div>
