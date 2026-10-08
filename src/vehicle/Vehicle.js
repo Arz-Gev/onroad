@@ -109,7 +109,6 @@ export class Vehicle {
 
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
-    this.betaPrev = 0; this.betaRate = 0;   // body slip angle and its rate (drift help)
     this.steerComp = 0;      // compliance steer of the front wheels (aligning moment against the steering)
     this.revTimer = 0;
     this.gripG = 0.63; this.gripSlip = 0.16;  // grip estimate for the keyboard steering limit (dirt)
@@ -289,23 +288,7 @@ export class Vehicle {
       const a = STEER_ASSIST[this.steerAssist];
       if (a) lim = Math.min(1, (Math.atan(this.P.wheelbase * a.k * this.gripG * G / Math.max(v * v, 1e-3)) + a.c * this.gripSlip) / maxA);
     }
-    let target = raw.steer * maxA * lim;
-    // drift help (keyboard, rear-wheel-drive car): in a slide the front wheels follow the front axle's travel
-    // when no key is held (caster self-steer: what the wheel does when you loosen your grip), and a
-    // countersteer key gets full lock instead of the grip limit
-    if (!raw.analogSteer && this.P.layout === 'rwd' && v > 4) {
-      const vx = this.vel.dot(this.fwd), vy = this.vel.dot(this.right), r = this.angVel.dot(this.up);
-      const beta = Math.atan2(vy, Math.max(Math.abs(vx), 1));
-      this.betaRate += ((beta - this.betaPrev) / h - this.betaRate) * Math.min(1, h / 0.05);
-      this.betaPrev = beta;
-      // front axle travel direction, plus a little more while the slide is still growing (the wheel kicks
-      // into the countersteer and catches the rotation)
-      const cs = Math.atan2(vy - r * (this.P.wheelbase / 2 + this.P.com[2]), Math.max(Math.abs(vx), 1)) + 0.25 * this.betaRate;
-      if (Math.abs(beta) > 0.07 && vx > 0) {
-        if (raw.steer === 0) target = Math.max(-maxA, Math.min(maxA, cs));
-        else if (Math.sign(raw.steer) === Math.sign(cs)) target = Math.sign(cs) * Math.min(maxA, Math.abs(cs) + 0.15 * Math.abs(raw.steer));
-      }
-    } else { this.betaPrev = 0; this.betaRate = 0; }
+    const target = raw.steer * maxA * lim;
     // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
     const S = this.P.steer, rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
     this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
