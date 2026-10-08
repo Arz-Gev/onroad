@@ -306,7 +306,8 @@ export class Vehicle {
         else if (Math.sign(raw.steer) === Math.sign(cs)) target = Math.sign(cs) * Math.min(maxA, Math.abs(cs) + 0.15 * Math.abs(raw.steer));
       }
     } else { this.betaPrev = 0; this.betaRate = 0; }
-    const rate = this.P.steer.rate ?? 1.35 * 17 / this.P.steer.ratio; // rad/s at the road wheel (hydraulic rack; stock 17:1)
+    // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
+    const S = this.P.steer, rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
     this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
     c.steer = this.steerAngle;
   }
