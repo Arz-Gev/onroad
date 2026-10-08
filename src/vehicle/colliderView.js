@@ -6,9 +6,8 @@ import { D } from './truckDims.js';
 // ground or an obstacle (the touching box turns red). Drawn on top of everything (no depth test).
 //
 // Two switches: 'physics' (Body and colliders tab) shows all of the above; 'susp' (Suspension tab) leaves
-// out the collision boxes, wheel cylinders and body contacts and adds the springs (colour: load), the
-// damper forces, static ride height and recent peak on the travel gauges, tyre load arrows and the roll
-// centres. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
+// out the collision boxes, wheel cylinders and body contacts and adds the damper
+// forces, static ride height and recent peak on the travel gauges and the roll centres. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
 //
 // Nothing exists until it is first switched on, and while off the group is invisible and update() returns
 // at once, so it costs nothing in normal play.
@@ -24,6 +23,7 @@ const COL = {
   peak: new THREE.Color(1, 1, 1),
 };
 const G = 9.81;
+const PATCH_R = 0.2;   // contact patch radius at static load (m)
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _p = new THREE.Vector3(), _cq = new THREE.Quaternion();
 
@@ -61,15 +61,6 @@ function cylinderLines(n = 32) {
     p.push(x, Math.cos(a), Math.sin(a), x, Math.cos(b), Math.sin(b));
   }
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; p.push(-1, Math.cos(a), Math.sin(a), 1, Math.cos(a), Math.sin(a)); }
-  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-}
-// coil spring: unit radius, along y from 0 to 1
-function coil(turns = 7, n = 14) {
-  const p = [], N = turns * n;
-  for (let i = 0; i < N; i++) {
-    const a = (i / n) * Math.PI * 2, b = ((i + 1) / n) * Math.PI * 2;
-    p.push(Math.cos(a), i / N, Math.sin(a), Math.cos(b), (i + 1) / N, Math.sin(b));
-  }
   return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
 }
 const segs = n => onTop(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(n * 6), 3)), lineMat(0xffffff, 0.8)));
@@ -138,11 +129,15 @@ export class ColliderView {
       this.body.add(g);
       return { g, rail, stop, mark, extra, still, peak, side: w.side };
     });
-    // contact patches (world): a disc per wheel, size by load, colour by slip
+    // contact patches (world): a disc per wheel, radius in proportion to the load (the ring = static
+    // load), colour by slip
+    const ring = new THREE.RingGeometry(PATCH_R - 0.012, PATCH_R, 48);
     this.patches = this.v.wheels.map(() => {
-      const d = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 24), fillMat(COL.ok, 0.7)));
-      this.world.add(d);
-      return d;
+      const g = new THREE.Group();
+      const disc = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 36), fillMat(COL.ok, 0.6)));
+      g.add(disc, onTop(new THREE.Mesh(ring, fillMat(0xffffff, 0.9))));
+      this.world.add(g);
+      return { g, disc };
     });
     // body contact points (world)
     this.dots = onTop(new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 10, 8), fillMat(COL.hit, 0.95), 48));
@@ -151,31 +146,18 @@ export class ColliderView {
     this.buildSusp();
   }
 
-  // suspension view: springs + damper bars (body frame), roll centres, tyre load arrows (world)
+  // suspension view: damper bars (body frame), roll centres
   buildSusp() {
     this.suspBody = new THREE.Group(); this.body.add(this.suspBody);
     this.suspWorld = new THREE.Group(); this.world.add(this.suspWorld);
-    const cg = coil();
     const bar = new THREE.PlaneGeometry(0.03, 1).translate(0, 0.5, 0);
     this.springs = this.v.wheels.map(() => {
-      const spring = onTop(new THREE.LineSegments(cg, lineMat(COL.ok, 0.95)));
       const damper = onTop(new THREE.Mesh(bar, fillMat(COL.cool, 0.85)));
       damper.rotation.y = Math.PI / 2;
-      this.suspBody.add(spring, damper);
-      return { spring, damper };
+      this.suspBody.add(damper);
+      return { damper };
     });
     this.rc = segs(4); this.rc.material.color.copy(COL.stop); this.suspBody.add(this.rc);
-    const up = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]);
-    const tick = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.07, 0, 0), new THREE.Vector3(0.07, 0, 0), new THREE.Vector3(0, 0, -0.07), new THREE.Vector3(0, 0, 0.07)]);
-    this.arrows = this.v.wheels.map(() => {
-      const g = new THREE.Group();
-      const line = onTop(new THREE.Line(up, lineMat(COL.ok, 0.95)));
-      const still = onTop(new THREE.LineSegments(tick, lineMat(COL.cool, 0.9)));
-      still.position.y = 0.6;
-      g.add(line, still);
-      this.suspWorld.add(g);
-      return { g, line };
-    });
   }
 
   // one corner's suspension state: travel, rates and forces at the spring seat, tyre load. Same
@@ -254,13 +236,15 @@ export class ColliderView {
       g.mark.material.color.copy(comp > ap.travel - 0.05 ? (comp >= ap.travel - 0.005 ? COL.hit : COL.stop) : COL.ok);
       // contact patch
       const d = this.patches[i];
-      d.visible = w.contact && w.FnAvg > 0;
-      if (d.visible) {
-        d.position.copy(w.P).addScaledVector(w.n, 0.01);
-        d.quaternion.setFromUnitVectors(Z, w.n);
-        d.scale.setScalar(0.05 + 0.12 * Math.sqrt(w.FnAvg / 5000));
+      d.g.visible = w.contact && w.FnAvg > 0;
+      if (d.g.visible) {
+        d.g.position.copy(w.P).addScaledVector(w.n, 0.01);
+        d.g.quaternion.setFromUnitVectors(Z, w.n);
+        const ff = (P.wheelbase / 2 - P.com[2]) / P.wheelbase, frac = ax.i === 0 ? ff : 1 - ff;
+        const still = (P.bodyMass * frac + ap.mass) * G / 2;
+        d.disc.scale.setScalar(Math.max(0.02, Math.min(0.8, PATCH_R * w.FnAvg / still)));
         const s = Math.min(1, w.slipNorm || 0);
-        d.material.color.copy(COL.ok).lerp(COL.hit, s);
+        d.disc.material.color.copy(COL.ok).lerp(COL.hit, s);
       }
       if (susp) this.updateSuspCorner(w, i, ke, dt);
     });
@@ -296,33 +280,15 @@ export class ColliderView {
     g.still.position.y = Math.min(ap.travel, c.staticComp);
     g.peak.position.y = Math.max(0, Math.min(ap.travel + 0.02, c.peak));
     g.peak.material.color.copy(c.peak >= c.stop ? COL.hit : COL.peak);
-    // spring: seat on the axle / corner up to a fixed seat on the body; colour by load against static
+    // damper force bar where the spring sits: up = bump (blue), down = rebound (orange), 0.1 m per kN
     const s = this.springs[i];
     const x = v.indep ? w.side * (P.track / 2 - 0.2) : w.side * (ap.springTrack ?? P.track * 0.7) / 2;
     const y0 = ax.droopY + c.compNow, y1 = ax.droopY + ap.travel + 0.1;
-    s.spring.position.set(x, y0, ap.z);
-    s.spring.scale.set(0.065, Math.max(0.02, y1 - y0), 0.065);
-    const r = c.springNow / Math.max(1, c.sprung);
-    const col = s.spring.material.color;
-    if (c.onStop) col.copy(COL.hit);
-    else if (r < 1) col.copy(COL.cool).lerp(COL.ok, Math.max(0, r));
-    else col.copy(COL.ok).lerp(COL.stop, Math.min(1, (r - 1) / 1.2));
-    // damper force bar beside the spring: up = bump (blue), down = rebound (orange), 0.1 m per kN
     const fd = c.damper, len = Math.min(0.4, Math.abs(fd) / 10000);
     s.damper.visible = len > 0.004;
     s.damper.position.set(x - w.side * 0.12, (y0 + y1) / 2, ap.z);
     s.damper.scale.y = fd >= 0 ? len : -len;
     s.damper.material.color.copy(fd >= 0 ? COL.cool : COL.stop);
-    // tyre load arrow along the ground normal: 0.6 m (the blue tick) = static load
-    const a = this.arrows[i];
-    a.g.visible = w.contact && c.loadNow > 0;
-    if (a.g.visible) {
-      a.g.position.copy(w.P);
-      a.g.quaternion.setFromUnitVectors(Y, w.n);
-      const q = c.loadNow / Math.max(1, c.staticLoad);
-      a.line.scale.y = Math.min(2, 0.6 * q);
-      a.line.material.color.copy(q < 1 ? COL.cool : COL.ok).lerp(q < 1 ? COL.ok : COL.stop, q < 1 ? q : Math.min(1, (q - 1) / 0.8));
-    }
   }
 
   // roll centres of independent axles (they follow the Roll centre sliders)
