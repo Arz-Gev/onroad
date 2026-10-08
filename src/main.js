@@ -13,7 +13,7 @@ import { buildUndergrowth } from './world/undergrowth.js';
 import { makeRockMaterial } from './world/materials.js';
 import { buildProps } from './world/props.js';
 import { Environment, QUICK_HOURS, QUICK_ORDER } from './world/environment.js';
-import { buildTrack } from './world/track.js';
+import { buildTrack, buildFlat } from './world/track.js';
 import { makeDefenderParams } from './vehicle/params.js';
 import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
@@ -96,7 +96,8 @@ async function main() {
   let terrain, terrainView = null, grass, water = null, props, trees, undergrowth = null, track = null, spawn;
   if (trackMode) {
     setLoading('Loading the track…', 0.3); await frame();
-    track = await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
+    track = params.get('map') === 'flat' ? buildFlat({ RAPIER, world, colliderSurface })
+      : await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
     scene.add(track.group);
     terrain = track.terrain;
     spawn = track.spawn;
