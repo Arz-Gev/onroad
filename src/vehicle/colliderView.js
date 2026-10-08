@@ -21,6 +21,7 @@ const COL = {
   cool: new THREE.Color(0.35, 0.7, 1.0),
 };
 const G = 9.81;
+const GAUGE_SCALE = 2;  // travel gauges drawn twice the real travel
 const PATCH_R = 0.2;   // contact patch radius at static load (m)
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _p = new THREE.Vector3(), _cq = new THREE.Quaternion();
@@ -113,7 +114,7 @@ export class ColliderView {
     // travel gauges, outside the body next to each wheel: droop..bump, bump stop zone, current position
     this.gauges = this.v.wheels.map(w => {
       const g = new THREE.Group();
-      const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.014, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
+      const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.006, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
       const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
       const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 1)));
       // suspension view: static ride height
@@ -228,7 +229,9 @@ export class ColliderView {
       // travel gauge: spring compression at this side, 0 = full droop, travel = hard stop
       const g = this.gauges[i];
       const comp = v.wheelComp(w);
-      g.g.position.set(w.side * (P.track / 2 + P.tire.width / 2 + 0.15), ax.droopY, ap.z);   // just outside the tyre, at the axle
+      // outside the tyre at the axle, drawn at GAUGE_SCALE (travel reads larger, the values stay true)
+      g.g.position.set(w.side * (P.track / 2 + P.tire.width / 2 + 0.3), ax.droopY + 0.15, ap.z);
+      g.g.scale.setScalar(GAUGE_SCALE);
       g.rail.scale.y = ap.travel;
       g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
       g.mark.position.y = Math.max(-0.02, Math.min(ap.travel + 0.02, comp));
