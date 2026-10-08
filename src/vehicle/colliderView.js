@@ -121,6 +121,7 @@ export class ColliderView {
       const extra = new THREE.Group();
       const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.005), fillMat(COL.cool, 1)));
       extra.add(still);
+      mark.renderOrder = 1000;   // current position drawn over the static mark
       g.add(rail, stop, mark, extra);
       g.rotation.y = Math.PI / 2;
       this.body.add(g);
