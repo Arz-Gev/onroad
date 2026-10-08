@@ -532,8 +532,8 @@ async function main() {
       rPos.lerpVectors(prevPos, curPos, alpha);
       rQ.slerpQuaternions(prevQ, curQ, alpha);
       view.update(rPos, rQ, paused ? 0 : dt, { night: env.night, darkness: env.darkness, shadows: true });
-      colliderView.update();
       rig.update(dt, input, rPos, rQ, vehicle, model);
+      colliderView.update(camera);   // after the rig: the suspension cards are placed with this frame's camera
       env.update(dt, rPos, camera);
       // the wheels and the body push the grass aside
       const pushers = vehicle.wheels.map(w => ({ x: w.P.x, y: w.P.y, z: w.P.z, r: w.contact ? 0.85 : 0 }));

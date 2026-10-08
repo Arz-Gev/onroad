@@ -139,3 +139,34 @@ body.paused .tune { visibility: hidden; }
 .tn-launch b { color: var(--txt); }
 
 @media (max-width: 640px) { .tune { top: auto; height: 55vh; left: 8px; right: 8px; bottom: 8px; width: auto; } body.tune-open #hud .dash { visibility: hidden; } }
+
+/* ---- suspension view cards over the 3D view (vehicle/suspCallouts.js): one per wheel, tied to the hub */
+.sv { position: fixed; inset: 0; z-index: 4; pointer-events: none; font-family: var(--sans); color: var(--txt); -webkit-user-select: none; user-select: none; }
+.sv-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sv-lines line { stroke: rgba(237, 237, 237, 0.6); stroke-width: 1.5; }
+.sv-lines circle { fill: var(--accent); stroke: rgba(0, 0, 0, 0.7); stroke-width: 1.5; }
+.sv-lines .hit { stroke: var(--hot); } .sv-lines circle.hit { fill: var(--hot); stroke: rgba(0, 0, 0, 0.7); }
+.sv-card {
+  position: absolute; left: 0; top: 0; width: 150px; height: 82px; box-sizing: border-box; will-change: transform;
+  display: flex; gap: 10px; padding: 8px 10px 8px 9px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+}
+.sv-card.hit { border-color: var(--hot); }
+.sv-card.air { opacity: 0.55; }
+.sv-bar { position: relative; flex: none; width: 10px; border-radius: 3px; background: var(--ghost); }
+.sv-stop { position: absolute; top: 0; left: 0; right: 0; border-radius: 3px 3px 0 0; background: var(--hot-soft); border-bottom: 1px solid var(--hot); }
+.sv-fill { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 3px; background: var(--accent); }
+.sv-card.hit .sv-fill { background: var(--hot); }
+.sv-static { position: absolute; left: -4px; right: -4px; height: 2px; margin-bottom: -1px; background: var(--cool); }
+.sv-peak { position: absolute; left: -2px; right: -2px; height: 1px; background: rgba(237, 237, 237, 0.75); }
+.sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.sv-h { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font: 600 11px/1 var(--sans); color: var(--dim); }
+.sv-st { font: 600 10.5px/1 var(--sans); color: var(--faint); white-space: nowrap; }
+.sv-card.hit .sv-st { color: var(--hot); }
+.sv-big { font: 600 20px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.sv-big small { margin-left: 5px; font: 500 10px/1 var(--sans); color: var(--faint); }
+.sv-row { display: flex; gap: 6px; font: 500 11px/1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sv-dl { color: var(--faint); } .sv-dl.up { color: var(--cool); }
+.sv-spd { color: var(--faint); } .sv-spd.fast { color: var(--cool); }
+.sv-dir { width: 9px; }
