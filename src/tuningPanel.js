@@ -269,7 +269,7 @@ export class TuningPanel {
       <div class="tn-boxed"></div>`;
     if (r.type === 'suspview') return `<div class="tn-row">
         <div class="tn-l"><span>Show suspension</span><button type="button" class="switch" data-act="suspview" role="switch" aria-label="Show suspension"><span class="knob"></span></button></div>
-        <div class="tn-h">Ход подвески, амортизаторы, центры крена и пятна контакта: размер — нагрузка на колесо, белое кольцо — нагрузка в покое, цвет — проскальзывание. Без коробок столкновений.</div>
+        <div class="tn-h">Ход подвески, амортизаторы, центры крена (оранжевые шары), центр масс (белый шар) и пятна контакта: размер — нагрузка на колесо, белое кольцо — нагрузка в покое, цвет — проскальзывание. Без коробок столкновений.</div>
         <div class="tn-susplive"></div>
       </div>`;
     if (r.type === 'dyno') return `<div class="tn-row">

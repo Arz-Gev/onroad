@@ -62,7 +62,6 @@ function cylinderLines(n = 32) {
   for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; p.push(-1, Math.cos(a), Math.sin(a), 1, Math.cos(a), Math.sin(a)); }
   return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
 }
-const segs = n => onTop(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(n * 6), 3)), lineMat(0xffffff, 0.8)));
 
 export class ColliderView {
   constructor(scene, model, vehicle) {
@@ -115,13 +114,13 @@ export class ColliderView {
     // travel gauges, outside the body next to each wheel: droop..bump, bump stop zone, current position
     this.gauges = this.v.wheels.map(w => {
       const g = new THREE.Group();
-      const rail = onTop(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]), lineMat(0xffffff, 0.45)));
-      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.55)));
-      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 0.95)));
+      const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.014, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
+      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
+      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 1)));
       // suspension view: static ride height and the recent peak compression
       const extra = new THREE.Group();
-      const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.01), fillMat(COL.cool, 0.9)));
-      const peak = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.008), fillMat(COL.peak, 0.85)));
+      const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.01), fillMat(COL.cool, 1)));
+      const peak = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.008), fillMat(COL.peak, 1)));
       extra.add(still, peak);
       g.add(rail, stop, mark, extra);
       g.rotation.y = Math.PI / 2;
@@ -156,7 +155,10 @@ export class ColliderView {
       this.suspBody.add(damper);
       return { damper };
     });
-    this.rc = segs(4); this.rc.material.color.copy(COL.stop); this.suspBody.add(this.rc);
+    // roll centres (orange) and the centre of mass (white): balls in the body frame
+    const ball = new THREE.SphereGeometry(1, 16, 12);
+    this.rc = [0, 1].map(() => { const m = onTop(new THREE.Mesh(ball, fillMat(COL.stop, 0.95))); m.scale.setScalar(0.045); this.suspBody.add(m); return m; });
+    this.com = onTop(new THREE.Mesh(ball, fillMat(0xffffff, 0.95))); this.com.scale.setScalar(0.06); this.suspBody.add(this.com);
   }
 
   // one corner's suspension state: travel, rates and forces at the spring seat, tyre load. Same
@@ -290,19 +292,11 @@ export class ColliderView {
     s.damper.material.color.copy(fd >= 0 ? COL.cool : COL.stop);
   }
 
-  // roll centres of independent axles (they follow the Roll centre sliders)
+  // roll centres of independent axles (they follow the Roll centre sliders) and the centre of mass
   updateRollCentres() {
     const v = this.v, P = v.P;
-    this.rc.visible = v.indep;
-    if (v.indep) {
-      const pr = this.rc.geometry.attributes.position;
-      P.axles.forEach((p, a) => {
-        const y = p.rcY ?? 0, z = p.z, k = a * 4;
-        pr.setXYZ(k, -0.08, y, z); pr.setXYZ(k + 1, 0.08, y, z);
-        pr.setXYZ(k + 2, 0, y - 0.08, z); pr.setXYZ(k + 3, 0, y + 0.08, z);
-      });
-      pr.needsUpdate = true;
-    }
+    P.axles.forEach((p, a) => { this.rc[a].visible = v.indep; this.rc[a].position.set(0, p.rcY ?? 0, p.z); });
+    this.com.position.set(P.com[0], P.com[1], P.com[2]);
   }
 
   dispose() {
