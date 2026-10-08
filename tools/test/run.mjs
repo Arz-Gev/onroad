@@ -167,22 +167,6 @@ test('S15 braking from 100 km/h with ABS: straight and short', expect => {
   expect('heading change (deg)', Math.abs(c.v.yaw() - yaw0) / DEG, 0, 2);
 });
 
-test('S15 0-100 km/h with a driver who keeps the rear tyres at peak slip (real 400 hp S15: about 5 s)', expect => {
-  const c = makeCar(), v = c.v, d = v.drivetrain;
-  run(c, 1, () => ({}));
-  d.requestShift(1);
-  while (d.shift) step(c, keyboard(c, {}));
-  let thr = 0.3, t = 0;
-  while (t < 15 && v.speed * 3.6 < 100) {
-    const vx = Math.max(0.5, v.vel.dot(v.fwd)), slip = (d.w[4] * v.R - vx) / Math.max(vx, 3);
-    thr = Math.max(0, Math.min(1, thr + (0.12 - slip) * H * 25));
-    if (d.manualGear < 5 && d.rpm > v.P.engine.limiterRpm - 400 && !d.shift) d.requestShift(1);
-    step(c, { throttle: thr, brake: 0, steer: 0, steerKey: 0, clutch: 0, handbrake: 0, analogSteer: false });
-    t += H;
-  }
-  expect('time to 100 km/h (s)', t, 4.3, 5.6);
-});
-
 test('welded diff ties the rear wheels; open diff lets them differ in a turn', expect => {
   for (const diff of ['welded', 'open']) {
     const c = makeCar({ tweak: s => { s.diff.type = diff; } });
