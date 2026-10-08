@@ -132,7 +132,7 @@ export class Input {
     this._thr = thr; this._brk = brk;
     let steer = this._steer || 0;
     const target = (rt ? 1 : 0) - (lt ? 1 : 0);
-    const rate = target === 0 ? 3.2 : (Math.sign(target) !== Math.sign(steer) && steer !== 0 ? 4.5 : 2.0);
+    const rate = target === 0 ? 6 : (Math.sign(target) !== Math.sign(steer) && steer !== 0 ? 8 : 4);
     steer += Math.max(-rate * dt, Math.min(rate * dt, target - steer));
     this._steer = steer;
     let clutch = this.down('ShiftLeft', 'ShiftRight') ? 1 : 0;
@@ -182,7 +182,7 @@ export class Input {
         for (const i in PAD_ACTION) this.padPrev[i] = !!gp.buttons[i]?.pressed;
       }
     }
-    r.throttle = thr; r.brake = brk; r.steer = steer; r.clutch = clutch; r.handbrake = hb;
+    r.throttle = thr; r.brake = brk; r.steer = steer; r.steerKey = r.analogSteer ? steer : target; r.clutch = clutch; r.handbrake = hb;
   }
 
   endFrame() {

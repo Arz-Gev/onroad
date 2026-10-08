@@ -62,24 +62,24 @@ const sr20 = (bar, refRpm, gamma = 2.75) => gross(SR20_NA.map(([r, t]) => [r, r 
 const S15_ENGINES = {
   street: {
     label: 'SR20DET', name: 'SR20DET, built street', fuel: 'petrol', note: 'Stock for this car: 0.75 bar, full boost from 3800 rpm. About 400 hp, revs to 8200.',
-    torque: sr20(0.75, 3800),
+    torque: sr20(0.75, 3800), turbo: { bar: 0.75, rpm: 3800, gamma: 2.75, spool: 0.35 },
     idleRpm: 950, limiterRpm: 8200, redlineRpm: 7800, shiftRpm: 7500, inertia: 0.16,
   },
   factory: {
     label: 'SR20 factory', name: 'SR20DET, factory', fuel: 'petrol', note: 'The Spec R as it left the factory: 250 PS, 275 Nm. Light, easy to balance.',
-    torque: sr20(0.05, 3500, 2.2),
+    torque: sr20(0.05, 3500, 2.2), turbo: { bar: 0.05, rpm: 3500, gamma: 2.2, spool: 0.25 },
     idleRpm: 850, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.16,
   },
   bigTurbo: {
     label: 'SR20 big turbo', name: 'SR20DET, big single turbo', fuel: 'petrol', note: '1.5 bar on a big single: lag below 4500, then about 570 hp. Hard to meter out.',
-    torque: sr20(1.5, 4800, 3.6),
+    torque: sr20(1.5, 4800, 3.6), turbo: { bar: 1.5, rpm: 4800, gamma: 3.6, spool: 0.6 },
     idleRpm: 1000, limiterRpm: 8600, redlineRpm: 8200, shiftRpm: 8000, inertia: 0.15,
   },
   jz: {
     label: '2JZ-GTE', name: '2JZ-GTE swap, single turbo', fuel: 'petrol', note: 'The classic swap: 3.0 straight six, about 650 Nm from 4000 rpm, 530 hp. Heavier nose, huge torque.',
     torque: gross([[0, 0], [500, 200], [1000, 250], [2000, 330], [3000, 480], [3500, 600], [4000, 640], [5000, 650],
       [6000, 620], [6500, 580], [7000, 520], [7500, 400], [8000, 150]]),
-    idleRpm: 800, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.24,
+    idleRpm: 800, limiterRpm: 7600, redlineRpm: 7200, shiftRpm: 7000, inertia: 0.24, turbo: { bar: 1.0, rpm: 4000, gamma: 3, spool: 0.5 },
   },
 };
 const S15_ENGINE_ORDER = ['street', 'factory', 'bigTurbo', 'jz'];
@@ -126,7 +126,7 @@ const CARS = {
     ranges: {
       'tyres.size': [24, 27, 1], 'tyres.width': [215, 275, 10], 'tyres.press': [15, 45, 1],
       'suspension.lift': [-0.05, 0.05, 0.005], 'suspension.k': [20000, 160000, 500], 'suspension.bump': [800, 8000, 100],
-      'suspension.rebound': [1200, 12000, 100], 'suspension.arb': [0, 30000, 500], 'suspension.travel': [0.05, 0.16, 0.005],
+      'suspension.rebound': [1200, 12000, 100], 'suspension.arb': [0, 40000, 500], 'suspension.travel': [0.08, 0.2, 0.005],
       'mass.cargo': [0, 200, 5], 'mass.comY': [-0.1, 0.15, 0.01],
       'steering.lock': [30, 70, 0.5], 'steering.ratio': [9, 18, 0.5],
     },
@@ -168,7 +168,7 @@ function makeProfile(id) {
 
     const axle = a => ({ k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel, ...(a.rcY != null ? { rc: a.rcY } : {}), ...(a.camber != null ? { camber: a.camber } : {}) });
     const s = {
-      v: 2,
+      v: 3,
       car: id,
       engine: { preset: C.stockEngine, torque: 1, revs: 0 },
       gearbox: {
@@ -209,7 +209,8 @@ function makeProfile(id) {
     out.tyres.pressF = num(t.pressF, 'tyres.press', out.tyres.pressF);
     out.tyres.pressR = num(t.pressR, 'tyres.press', out.tyres.pressR);
     out.tyres.grip = num(t.grip, 'tyres.grip', out.tyres.grip);
-    const su = clone(s.suspension || {});
+    const fresh = id === 's15' && !(s.v >= 3);
+    const su = fresh ? {} : clone(s.suspension || {});
 
     if (id === 'defender' && !(s.v >= 2) && su.front?.arb === 8000 && su.rear?.arb === 8500) { delete su.front.arb; delete su.rear.arb; }
     out.suspension.lift = num(su.lift, 'suspension.lift', out.suspension.lift);
@@ -219,7 +220,7 @@ function makeProfile(id) {
     const m = s.mass || {};
     for (const k of ['cargo', 'comY']) out.mass[k] = num(m[k], 'mass.' + k, out.mass[k]);
     if (C.ui.roof) out.mass.roof = num(m.roof, 'mass.roof', out.mass.roof);
-    const st = s.steering || {};
+    const st = fresh ? {} : s.steering || {};
     for (const k of ['lock', 'ratio', 'caster']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
     if (out.diff) {
       const df = s.diff || {};
@@ -245,7 +246,7 @@ function makeProfile(id) {
     Object.assign(P.engine, {
       name: E.label, preset: s.engine.preset, fuel: E.fuel,
       torque: E.torque.map(([r, t]) => [r, t * k]),
-      idleRpm: E.idleRpm, inertia: E.inertia,
+      idleRpm: E.idleRpm, inertia: E.inertia, turbo: E.turbo ?? null,
       limiterRpm: E.limiterRpm + dr, redlineRpm: E.redlineRpm + dr, shiftRpm: E.shiftRpm + dr,
     });
     P.name = C.named(B, E, s.engine.preset);

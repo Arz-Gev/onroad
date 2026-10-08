@@ -17,7 +17,8 @@ const GROUND_BIT = 0x0001, WHEEL_BIT = 0x0002;
 export const GROUP_GROUND = (GROUND_BIT << 16) | 0xffff;
 const GROUP_WHEEL_SIDE = (WHEEL_BIT << 16) | (0xffff & ~GROUND_BIT);
 
-export const STEER_ASSIST = { strong: { slip: 1.0 }, light: { slip: 1.6 } };
+export const STEER_ASSIST = { strong: { slip: 1.0, counter: 0.3 }, light: { slip: 1.6, counter: 0.8 } };
+const HAND_RATE = 23;
 
 export class Vehicle {
   constructor(RAPIER, world, P, opts = {}) {
@@ -234,46 +235,42 @@ export class Vehicle {
     c.clutch = raw.clutch;
     c.handbrake = this.handbrakeLogic(raw, h);
 
-    const v = Math.abs(this.speed), maxA = this.P.steer.maxAngle;
+    const S = this.P.steer, v = Math.abs(this.speed), maxA = S.maxAngle;
     this.updateGripEstimate(h);
-    let lim = maxA;
-    if (raw.analogSteer) lim = maxA / (1 + Math.max(0, v - 8) / 30);
-    else {
+    const key = raw.steerKey ?? raw.steer;
+    const free = S.inertia != null && !raw.analogSteer && key === 0 && this.speed > -1;
+    let target = 0;
+    if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
+    else if (!free) {
+      let lim = maxA;
       const a = STEER_ASSIST[this.steerAssist];
       const vx = this.vel.dot(this.fwd);
       if (a && vx > 3 && raw.steer !== 0) {
         const vy = this.vel.dot(this.right), r = this.angVel.dot(this.up);
-        const fa = Math.atan2(vy - r * (this.P.wheelbase / 2 + this.P.com[2]), vx);
-        const pk = a.slip * this.gripSlip;
-        const useful = raw.steer > 0 ? fa + pk : pk - fa;
+        const L = this.P.wheelbase, cz = this.P.com[2];
+        const fa = Math.atan2(vy - r * (L / 2 + cz), vx), ra = Math.atan2(vy + r * (L / 2 - cz), vx);
+        const pk = this.gripSlip, d = Math.sign(raw.steer);
+        const slide = Math.max(0, Math.min(1, (d * ra / pk - 0.5)));
+        const useful = d * fa + pk * (a.slip + (a.counter - a.slip) * slide);
         const k = Math.min(1, (vx - 3) / 3);
         lim = maxA + (Math.max(0, Math.min(maxA, useful)) - maxA) * k;
       }
+      target = raw.steer * lim;
     }
-    const target = raw.steer * lim;
-    const S = this.P.steer;
-
-    const handsOff = !raw.analogSteer && raw.steer === 0 && v > 1 && S.inertia != null;
-    if (handsOff) {
+    let w = this.steerVel;
+    if (free) {
       const Fz = Math.max(0, this.wheels[0].Fn) + Math.max(0, this.wheels[1].Fn);
-      let M = -this.alignM - Fz * (S.kpiOffset ?? 0) * Math.sin((S.kpi ?? 0) * DEG) * Math.sin(this.steerAngle);
-      const I = S.inertia, Cd = S.freeDamping ?? 60, Mf = S.friction ?? 6;
-      let w = this.steerVel;
-      if (Math.abs(w) < 0.02 && Math.abs(M) <= Mf) w = 0;
-      else {
-        M -= Mf * Math.sign(Math.abs(w) >= 0.02 ? w : M);
-        w = (w + h * M / I) / (1 + h * Cd / I);
-      }
-      let a = this.steerAngle + w * h;
-      if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }
-      this.steerAngle = a; this.steerVel = w;
+      const M = -this.alignM - Fz * S.kpiOffset * Math.sin(S.kpi * DEG) * Math.sin(this.steerAngle) - S.friction * Math.tanh(w / 0.05);
+      w = (w + h * M / S.inertia) / (1 + h * S.damping / S.inertia);
     } else {
-      const rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
-      const a0 = this.steerAngle;
-      this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
-      this.steerVel = (this.steerAngle - a0) / h;
+      const rate = HAND_RATE / S.ratio;
+      const cmd = Math.max(-rate, Math.min(rate, (target - this.steerAngle) / 0.05));
+      w += (cmd - w) * Math.min(1, h / 0.025);
     }
-    this.handsOff = handsOff;
+    let a = this.steerAngle + w * h;
+    if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }
+    this.steerAngle = a; this.steerVel = w;
+    this.handsOff = free;
     c.steer = this.steerAngle;
   }
 
@@ -655,8 +652,9 @@ export class Vehicle {
     let F = Math.max(0, k * (x + p.preload));
     const bs = x - (p.travel - 0.05);
     if (bs > 0) {
-      const el = 220000 * bs + 8e6 * bs * bs;
-      F += (xd > 0 ? el : 0.55 * el) + (xd > 0 ? 6000 * xd * Math.min(1, bs / 0.02) : 0);
+      const [b1, b2] = p.bumpStop ?? [220000, 8e6];
+      const el = b1 * bs + b2 * bs * bs;
+      F += el * (0.775 + 0.225 * Math.tanh(xd / 0.05)) + (xd > 0 ? 6000 * xd * Math.min(1, bs / 0.02) : 0);
     }
     if (x > p.travel) F += 3e6 * (x - p.travel) + (xd > 0 ? 25000 * xd : 0);
     if (x < 0) F += 1.6e6 * x + (xd < 0 ? 12000 * xd : 0);
