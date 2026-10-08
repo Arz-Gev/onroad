@@ -6,7 +6,7 @@ import * as THREE from 'three';
 //
 // Two switches: 'physics' (Body and colliders tab) shows all of the above; 'susp' (Suspension tab) leaves
 // out the collision boxes, wheel cylinders and body contacts and adds the damper
-// forces, static ride height and recent peak on the travel gauges and the roll centres. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
+// forces, static ride height on the travel gauges and the roll centres. With 'susp' on, corners[] holds smoothed per-corner numbers for the panel.
 //
 // Nothing exists until it is first switched on, and while off the group is invisible and update() returns
 // at once, so it costs nothing in normal play.
@@ -19,7 +19,6 @@ const COL = {
   ok: new THREE.Color(0.43, 0.86, 0.55),
   stop: new THREE.Color(1.0, 0.7, 0.28),
   cool: new THREE.Color(0.35, 0.7, 1.0),
-  peak: new THREE.Color(1, 1, 1),
 };
 const G = 9.81;
 const PATCH_R = 0.2;   // contact patch radius at static load (m)
@@ -117,15 +116,14 @@ export class ColliderView {
       const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.014, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
       const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
       const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 1)));
-      // suspension view: static ride height and the recent peak compression
+      // suspension view: static ride height
       const extra = new THREE.Group();
       const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.01), fillMat(COL.cool, 1)));
-      const peak = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.008), fillMat(COL.peak, 1)));
-      extra.add(still, peak);
+      extra.add(still);
       g.add(rail, stop, mark, extra);
       g.rotation.y = Math.PI / 2;
       this.body.add(g);
-      return { g, rail, stop, mark, extra, still, peak, side: w.side };
+      return { g, rail, stop, mark, extra, still, side: w.side };
     });
     // contact patches (world): a disc per wheel, radius in proportion to the load (the ring = static
     // load), colour by slip
@@ -178,7 +176,7 @@ export class ColliderView {
     const ff = (P.wheelbase / 2 - P.com[2]) / P.wheelbase, frac = ax.i === 0 ? ff : 1 - ff;
     const sprung = P.bodyMass * G * frac / 2;
     const load = w.contact ? w.FnAvg : 0;
-    const c = this.corners[w.i] || (this.corners[w.i] = { comp, rate, spring, damper, bar, load, peak: comp });
+    const c = this.corners[w.i] || (this.corners[w.i] = { comp, rate, spring, damper, bar, load });
     c.travel = p.travel; c.stop = p.travel - 0.05;
     c.sprung = sprung; c.staticComp = Math.max(0, sprung / ax.k - (p.preload || 0));
     c.staticLoad = (P.bodyMass * frac + p.mass) * G / 2;
@@ -275,12 +273,9 @@ export class ColliderView {
   updateSuspCorner(w, i, ke, dt) {
     const v = this.v, P = v.P, ax = w.axle, ap = ax.p;
     const c = this.suspCorner(w, ke);
-    // gauge ticks: static ride height, peak compression of the last couple of seconds
+    // gauge tick: static ride height
     const g = this.gauges[i];
-    c.peak = Math.max(c.compNow, c.peak - dt * 0.06);
     g.still.position.y = Math.min(ap.travel, c.staticComp);
-    g.peak.position.y = Math.max(0, Math.min(ap.travel + 0.02, c.peak));
-    g.peak.material.color.copy(c.peak >= c.stop ? COL.hit : COL.peak);
     // damper force bar where the spring sits: up = bump (blue), down = rebound (orange), 0.1 m per kN
     const s = this.springs[i];
     const x = v.indep ? w.side * (P.track / 2 - 0.2) : w.side * (ap.springTrack ?? P.track * 0.7) / 2;
