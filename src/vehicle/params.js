@@ -158,14 +158,14 @@ export function makeS15Params() {
         name: 'front', z: -wheelbase / 2, droopY: 0.311, travel: 0.11,
         mass: 90, k: 70000, preload: 0.021,
         bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 9000, rcY: 0.05, anti: 0.15,
+        arb: 9000, rcY: 0.05, anti: 0.15, camber: -3,
         steered: true,
       },
       {
         name: 'rear', z: wheelbase / 2, droopY: 0.316, travel: 0.11,
         mass: 90, k: 45000, preload: 0.039,
         bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
-        arb: 3000, rcY: 0.09, anti: 0.3,
+        arb: 3000, rcY: 0.09, anti: 0.3, camber: -1,
         steered: false,
       },
     ],
@@ -180,8 +180,10 @@ export function makeS15Params() {
       relaxX: 0.15, relaxY: 0.4,
     },
     // quick rack: a slide is caught with the wheel, ~3.5 rad/s at the road wheels (lock to lock in ~0.4 s).
-    // casterTrail 0.0347 m = 6 deg of caster on the 0.33 m tyre
-    steer: { maxAngle: 0.75, kingpinTrack: 1.45, ratio: 13, rate: 3.5, rateRatio: 13, ackermann: 0.2, casterTrail: 0.0347, pneuTrail: 0.03, stiffness: 40000 },
+    // casterTrail 0.0347 m = 6 deg of caster on the 0.33 m tyre; kpi: kingpin inclination (deg) and its offset
+    // at the ground (m); inertia / freeDamping / friction: the steering's, for hands-off self-steer (Vehicle)
+    steer: { maxAngle: 0.75, kingpinTrack: 1.45, ratio: 13, rate: 3.5, rateRatio: 13, ackermann: 0.2, casterTrail: 0.0347, kpi: 13, kpiOffset: 0.03,
+      inertia: 0.1, freeDamping: 60, friction: 6, pneuTrail: 0.03, stiffness: 40000 },
     brakes: { front: 1500, rear: 850, handbrake: 2500, handbrakeHold: 8000 },
     engine: {
       ...P.engine,

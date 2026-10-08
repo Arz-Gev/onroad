@@ -55,7 +55,7 @@ export function tireCoefs(tire, psi, surf, out) {
 export function tireForces(w, Fn, vsx, vsy, speed, surf, co) {
   if (Fn <= 0) { w.Fx = 0; w.Fy = 0; w.slipNorm = 0; return; }
   const loadFactor = Math.max(0.75, Math.min(1.12, 1 - 0.14 * (Fn / FN_REF - 1)));
-  const mu = co.mu * loadFactor;
+  const mu = co.mu * loadFactor * (w.camberGrip ?? 1);
   const sx = w.ux / (co.Lx * surf.kPeak);
   w.aPk = latPeak(surf, Fn);
   const sy = w.uy / (co.Ly * w.aPk);

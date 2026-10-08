@@ -17,6 +17,7 @@ import { SURFACES, tireCoefs, tireForces, tireRelax } from './tire.js';
 
 const V3 = THREE.Vector3;
 const G = 9.81;
+const DEG = Math.PI / 180;
 const FAN = [];
 for (let i = -6; i <= 6; i++) FAN.push((i / 6) * (80 * Math.PI / 180));
 
@@ -112,6 +113,7 @@ export class Vehicle {
     this.steerAngle = 0;
     this.steerComp = 0;      // compliance steer of the front wheels (aligning moment against the steering)
     this.alignM = 0; this.handsOff = false;   // front aligning moment (N·m); keyboard with no key held
+    this.steerVel = 0;       // road-wheel steering rate (rad/s), the hands-off steering's state
     this.revTimer = 0;
     this.gripG = 0.63; this.gripSlip = 0.16;  // grip estimate for the keyboard steering limit (dirt)
     this.steerAssist = 'strong'; // keyboard steering limit at speed: 'strong' | 'light' | 'off' (Settings)
@@ -301,20 +303,55 @@ export class Vehicle {
     }
     const target = raw.steer * lim;
     const S = this.P.steer;
-    // keyboard, no key held: hands off the wheel. Nothing holds the steering, so the front tyres' aligning
-    // moment about the kingpins (side force x caster + pneumatic trail, steerCompliance) turns the wheels
-    // against the steering's friction / damping, towards the front axle's direction of travel. In a slide
-    // that is countersteer, and more caster gives a stronger, quicker pull.
-    this.handsOff = !raw.analogSteer && raw.steer === 0 && v > 1;
-    if (this.handsOff) {
-      const rate = Math.max(-8, Math.min(8, -this.alignM / (S.freeDamping ?? 45)));
-      this.steerAngle = Math.max(-maxA, Math.min(maxA, this.steerAngle + rate * h));
+    // Keyboard, no key held: hands off the wheel. The steering (wheels, rack, column and steering wheel,
+    // as one inertia at the road wheels) is then turned by
+    // - the front tyres' aligning moment about the kingpins: side force x (caster trail + pneumatic trail),
+    //   steerCompliance. It points the wheels along the front axle's travel: back to straight after a corner,
+    //   into countersteer in a slide. More caster pulls harder;
+    // - the kingpin inclination: steering lifts the front, so the front's weight pulls the wheels back to
+    //   centre (works at low speed too, where the tyres give little);
+    // against the steering's damping and friction. It has inertia, so in a quick transition the wheel spins
+    // through and can overshoot, then settles.
+    // (cars with a steering inertia only: the truck weaves hands-off at highway speed, so it keeps the wheels)
+    const handsOff = !raw.analogSteer && raw.steer === 0 && v > 1 && S.inertia != null;
+    if (handsOff) {
+      const Fz = Math.max(0, this.wheels[0].Fn) + Math.max(0, this.wheels[1].Fn);
+      let M = -this.alignM - Fz * (S.kpiOffset ?? 0) * Math.sin((S.kpi ?? 0) * DEG) * Math.sin(this.steerAngle);
+      const I = S.inertia, Cd = S.freeDamping ?? 60, Mf = S.friction ?? 6;
+      let w = this.steerVel;
+      if (Math.abs(w) < 0.02 && Math.abs(M) <= Mf) w = 0;                 // stuck in its friction
+      else {
+        M -= Mf * Math.sign(Math.abs(w) >= 0.02 ? w : M);
+        w = (w + h * M / I) / (1 + h * Cd / I);                         // damping implicit
+      }
+      let a = this.steerAngle + w * h;
+      if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }        // on the lock stop
+      this.steerAngle = a; this.steerVel = w;
     } else {
       // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
       const rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
+      const a0 = this.steerAngle;
       this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));
+      this.steerVel = (this.steerAngle - a0) / h;
     }
+    this.handsOff = handsOff;
     c.steer = this.steerAngle;
+  }
+
+  // Camber. The wheel's lean against the road (its top towards +sc = right, rad): body or axle roll,
+  // static camber, and on a steered wheel what caster (both wheels lean into the steer) and kingpin
+  // inclination (both lean out) add with the steering angle. A tyre grips best leaning ~2 deg into its side
+  // force; leaning away (positive camber against the load) or far over costs grip. Going straight a tilted
+  // wheel loses a little. Sets w.camberGrip, a factor on the tyre's mu (tire.js).
+  camber(w, sinC, sinK) {
+    const p = w.axle.p;
+    let lean = Math.asin(Math.max(-1, Math.min(1, w.up.dot(w.sc)))) + w.side * (p.camber ?? 0) * DEG;
+    if (p.steered) lean += sinC * Math.sin(w.steer) + w.side * sinK * (1 - Math.cos(w.steer));
+    w.camber = lean;
+    const ta = Math.abs(w.vcy) / Math.max(Math.abs(w.vcx), 1);
+    const b = Math.min(1, ta / (w.aPk || w.surf.aPeak));         // how much the tyre is cornering
+    const into = -Math.sign(w.vcy) * lean;                         // lean into the side force
+    w.camberGrip = Math.max(0.6, 1 - b * 8 * (into - 0.035) ** 2 - (1 - b) * 4 * lean * lean);
   }
 
   // What the truck can corner at right now, from the tyres in contact (last step's coefficients): lateral
@@ -518,6 +555,8 @@ export class Vehicle {
     this.updateGeometry();
 
     const R0 = this.R;
+    // caster and kingpin inclination tilt a steered wheel (camber); see the contact loop
+    const sinC = Math.sin(Math.atan((P.steer.casterTrail || 0) / R0)), sinK = Math.sin((P.steer.kpi ?? 0) * DEG);
     for (const w of this.wheels) {
       this.castContact(w);
       tireCoefs(T, this.pressures[w.i < 2 ? 0 : 1], w.surf, w.co);
@@ -529,7 +568,8 @@ export class Vehicle {
         this.pointVel(w.P, _v);
         w.vcx = _v.dot(w.fc);
         w.vcy = _v.dot(w.sc);
-      } else { w.vcx = w.vcy = 0; }
+        this.camber(w, sinC, sinK);
+      } else { w.vcx = w.vcy = 0; w.camberGrip = 1; }
       this.pointVel(w.hub, _v);
       w.vHubPerp.copy(_v).addScaledVector(up, -_v.dot(up));
       w.nLocal.copy(w.n).applyQuaternion(_q2.copy(this.quat).invert());

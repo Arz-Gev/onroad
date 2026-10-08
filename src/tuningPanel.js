@@ -52,6 +52,7 @@ function lr(key, U, ax) {
     'suspension.arb': rear ? { l: 'больше крен, зад цепче', r: 'зад легче уходит в занос' }
       : { l: 'больше крен, перед цепче', r: 'меньше крен, перед сползает', n: truck ? 'На камнях лучше 0.' : '' },
     'suspension.rc': { l: 'больше крен', r: rear ? 'меньше крен, зад раньше срывается' : 'меньше крен, перед раньше сползает' },
+    'suspension.camber': { l: 'внешнее колесо в повороте ровнее, больше бокового сцепления', r: 'ровнее на прямой: тяга и торможение' },
     'suspension.travel': { l: 'раньше бьёт в отбойник', r: 'колесо выше в арке' },
     'brakes.force': { l: 'слабее', r: 'сильнее, легче заблокировать' },
     'brakes.bias': { l: 'больше на зад: может развернуть', r: 'больше на перед: стабильнее' },
@@ -61,7 +62,7 @@ function lr(key, U, ax) {
     'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
     'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
     'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
-    'steering.caster': { l: 'колёса слабее сами идут в занос', r: 'колёса сильнее и быстрее сами ловят занос', n: 'Работает, когда клавиша руля отпущена: колёса сами поворачиваются туда, куда едет перед.' },
+    'steering.caster': { l: 'колёса слабее сами идут в занос', r: 'колёса сильнее сами ловят занос, больше развала на угле', n: 'Клавиша руля отпущена: колёса сами поворачиваются туда, куда едет перед. Ещё кастер наклоняет повёрнутое колесо (развал).' },
   };
   return H[key] || '';
 }
@@ -205,8 +206,8 @@ export class TuningPanel {
       { id: 'susp', title: 'Suspension', rows: [
         { type: 'suspview' },
         sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), lr('suspension.lift', U)),
-        ...['k', 'bump', 'rebound', 'arb', 'travel', 'rc'].filter(k => this.setup.suspension.front[k] !== undefined).flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel', rc: 'Roll centre' }[k]} ${n}`, 'suspension.' + k,
-          v => (k === 'rc' ? sgnCm(v) : k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
+        ...['k', 'bump', 'rebound', 'arb', 'travel', 'rc', 'camber'].filter(k => this.setup.suspension.front[k] !== undefined).flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel', rc: 'Roll centre', camber: 'Camber' }[k]} ${n}`, 'suspension.' + k,
+          v => (k === 'camber' ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}°` : k === 'rc' ? sgnCm(v) : k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + (k === 'camber' || k === 'rc' ? '' : ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`),
           lr('suspension.' + k, U, n)))),
       ] },
       { id: 'brakes', title: 'Brakes', rows: [

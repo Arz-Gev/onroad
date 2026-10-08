@@ -121,7 +121,7 @@ const BASE_RANGES = {
   'tyres.size': [31, 37, 1], 'tyres.width': [9.5, 13.5, 0.5], 'tyres.press': [6, 38, 1], 'tyres.grip': [0.7, 1.3, 0.01],
   'suspension.lift': [0, 0.15, 0.005], 'suspension.k': [15000, 100000, 500], 'suspension.bump': [1000, 10000, 100],
   'suspension.rebound': [1500, 16000, 100], 'suspension.arb': [0, 30000, 500], 'suspension.travel': [0.14, 0.36, 0.005],
-  'suspension.rc': [-0.05, 0.25, 0.005],
+  'suspension.rc': [-0.05, 0.25, 0.005], 'suspension.camber': [-6, 2, 0.25],
   'brakes.force': [0.4, 1.8, 0.05], 'brakes.bias': [0.4, 0.85, 0.01], 'brakes.handbrake': [0.3, 2, 0.05],
   'mass.cargo': [0, 900, 10], 'mass.roof': [0, 300, 5], 'mass.comY': [-0.15, 0.4, 0.01],
   'steering.lock': [25, 48, 0.5], 'steering.ratio': [11, 24, 0.5], 'steering.caster': [2, 10, 0.5],
@@ -197,7 +197,7 @@ function makeProfile(id) {
   function stockSetup() {
     const P = BASE, [f, r] = P.axles;
     // rc: roll centre height, only on independent axles (a beam axle's is set by its links)
-    const axle = a => ({ k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel, ...(a.rcY != null ? { rc: a.rcY } : {}) });
+    const axle = a => ({ k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel, ...(a.rcY != null ? { rc: a.rcY } : {}), ...(a.camber != null ? { camber: a.camber } : {}) });
     const s = {
       v: 2,
       car: id,
@@ -246,7 +246,7 @@ function makeProfile(id) {
     // off at speed). Untouched stock values there take the current stock bars.
     if (id === 'defender' && !(s.v >= 2) && su.front?.arb === 8000 && su.rear?.arb === 8500) { delete su.front.arb; delete su.rear.arb; }
     out.suspension.lift = num(su.lift, 'suspension.lift', out.suspension.lift);
-    for (const ax of ['front', 'rear']) for (const k of ['k', 'bump', 'rebound', 'arb', 'travel', 'rc']) if (out.suspension[ax][k] !== undefined) out.suspension[ax][k] = num(su[ax]?.[k], 'suspension.' + k, out.suspension[ax][k]);
+    for (const ax of ['front', 'rear']) for (const k of ['k', 'bump', 'rebound', 'arb', 'travel', 'rc', 'camber']) if (out.suspension[ax][k] !== undefined) out.suspension[ax][k] = num(su[ax]?.[k], 'suspension.' + k, out.suspension[ax][k]);
     const b = s.brakes || {};
     for (const k of ['force', 'bias', 'handbrake']) out.brakes[k] = num(b[k], 'brakes.' + k, out.brakes[k]);
     const m = s.mass || {};
@@ -311,6 +311,7 @@ function makeProfile(id) {
       a.droopY = b.droopY - su.lift;
       a.k = q.k; a.bump = q.bump; a.rebound = q.rebound; a.arb = q.arb; a.travel = q.travel;
       if (q.rc !== undefined) a.rcY = q.rc;
+      if (q.camber !== undefined) a.camber = q.camber;
       a.mass = b.mass + 2 * (wm - wm0);
     });
     P.lift = su.lift;
