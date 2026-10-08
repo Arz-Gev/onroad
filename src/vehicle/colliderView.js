@@ -134,7 +134,7 @@ export class ColliderView {
     const ring = new THREE.RingGeometry(PATCH_R - 0.012, PATCH_R, 48);
     this.patches = this.v.wheels.map(() => {
       const g = new THREE.Group();
-      const disc = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 36), fillMat(COL.ok, 0.6)));
+      const disc = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 36), fillMat(COL.ok, 0.35)));
       g.add(disc, onTop(new THREE.Mesh(ring, fillMat(0xffffff, 0.9))));
       this.world.add(g);
       return { g, disc };
