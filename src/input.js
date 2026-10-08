@@ -144,8 +144,8 @@ export class Input {
     const lt = this.down('KeyA', 'ArrowLeft'), rt = this.down('KeyD', 'ArrowRight');
     // pedal ramps (keyboard)
     const ramp = (cur, on, upRate, downRate) => on ? Math.min(1, cur + upRate * dt) : Math.max(0, cur - downRate * dt);
-    let thr = ramp(this._thr || 0, up, 2.2, 5);
-    let brk = ramp(this._brk || 0, dn, 3.5, 6);
+    let thr = ramp(this._thr || 0, up, 6.5, 10);    // full in ~0.15 s, off in 0.1 s
+    let brk = ramp(this._brk || 0, dn, 8, 12);      // full in ~0.12 s
     this._thr = thr; this._brk = brk;
     let steer = this._steer || 0;
     const target = (rt ? 1 : 0) - (lt ? 1 : 0);
