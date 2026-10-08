@@ -115,11 +115,11 @@ export class ColliderView {
     this.gauges = this.v.wheels.map(w => {
       const g = new THREE.Group();
       const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.006, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
-      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
-      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 1)));
+      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.0175, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
+      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.045, 0.022), fillMat(COL.ok, 1)));
       // suspension view: static ride height
       const extra = new THREE.Group();
-      const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.01), fillMat(COL.cool, 1)));
+      const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.005), fillMat(COL.cool, 1)));
       extra.add(still);
       g.add(rail, stop, mark, extra);
       g.rotation.y = Math.PI / 2;
