@@ -93,6 +93,9 @@ body.paused .tune { visibility: hidden; }
 .tn-l output { font: 500 11.5px/1 var(--mono); color: var(--txt); white-space: nowrap; }
 .tn-row.mod .tn-l span, .tn-row.mod .tn-l output { color: var(--cool); }
 .tn-h { margin-top: 2px; font-size: 11px; line-height: 1.35; color: var(--faint); }
+.tn-lr { display: flex; justify-content: space-between; gap: 14px; color: var(--dim); }
+.tn-lr span { flex: 0 1 auto; }
+.tn-lr span:last-child { text-align: right; }
 .tn-rng { position: relative; height: 18px; display: flex; align-items: center; }
 .tn-rng input { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; position: relative; z-index: 1; background: transparent; }
 /* stock value: a small notch under the track */

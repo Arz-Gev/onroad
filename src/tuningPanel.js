@@ -26,39 +26,42 @@ const GEAR_NAMES = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 const LIVE = { range: 'Low range', centreLock: 'Centre lock', rearLock: 'Rear locker', frontLock: 'Front locker', traction: 'Traction ctl', abs: 'ABS', rwd: '2WD' };
 const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['tyres'], susp: ['suspension'], brakes: ['brakes'], mass: ['mass'], steer: ['steering'], body: ['colliders'] };
 
-// Explanations of the suspension sliders (shown with the (i) button). Per slider: what it is, what it
-// does to the car, the trade-off; the front row explains the setting, the rear row what changes at the rear.
-// U is the car's profile (U.transfer: the off-road truck).
-function suspHint(k, axle, U) {
-  const truck = !!U.transfer;
-  const T = {
-    lift: () => truck
-      ? 'Лифт: удлиняет пружины (или ставит проставки), и кузов поднимается над мостами. Больше дорожный просвет под кузовом, лучше углы въезда, съезда и рампы, больше места в арках под большие колёса. Цена: центр масс выше, машина сильнее кренится и раньше опрокидывается на боковом склоне. Ход подвески и жёсткость при этом не меняются, меняется только высота кузова. Просвет под мостами зависит от размера колёс, а не от лифта.'
-      : 'Высота кузова: опускает или поднимает кузов относительно колёс. Ниже: центр масс ниже, меньше переносится веса на внешние колёса в повороте, машина собраннее. Цена: меньше просвет под кузовом и меньше места в арках, при полном сжатии шина может задевать арку (смотри «Arch room» в разделе колёс). Ход подвески и жёсткость при этом не меняются, меняется только положение кузова.',
-    k: {
-      F: () => `Жёсткость пружины (Н/м, сила на колесе на каждый метр сжатия). Жёстче: кузов меньше кренится в поворотах и меньше клюёт при торможении и разгоне, машина быстрее отвечает на руль, но сильнее трясёт на неровностях, и колесо легче отрывается от дороги на кочках. Мягче: плавнее и цепче на плохой дороге, но кузов раскачивается и валится. Ещё пружина держит вес: чем мягче, тем сильнее машина проседает в покое и тем ближе подвеска стоит к отбойникам. Баланс: более жёсткий перед относительно зада даёт больше недостаточной поворачиваемости (машина тянет прямо, перед сползает).${truck ? ' Для бездорожья мягкие пружины помогают колёсам держаться за землю на ухабах и камнях.' : ''} Сводка «Ride» сверху показывает частоту раскачки.`,
-      R: () => `Задняя пружина. Жёстче сзади: в повороте больше веса переходит на заднее внешнее колесо, задняя ось раньше срывается, машина охотнее заходит в занос (избыточная поворачиваемость). Мягче сзади: зад держит лучше, машина стабильнее, но ленивее поворачивает. Сзади обычно больше вес при загрузке, поэтому слишком мягкая задняя пружина сажает зад на отбойники.${truck ? ' С грузом и багажником на крыше задние пружины стоит делать жёстче.' : ' Если в таблице «Show suspension» задние колёса часто стоят на отбойниках, задние пружины слишком мягкие для этой высоты.'}`,
-    },
-    bump: {
-      F: () => `Сжатие амортизатора (Н·с/м, сила на каждый метр в секунду скорости). Это сопротивление, когда колесо идёт вверх, на кочку. Больше: кузов спокойнее реагирует на руль и торможение, меньше клюёт и кренится в начале манёвра, но удар от острой кочки сильнее передаётся в кузов, и колесо может подпрыгнуть. Меньше: мягко глотает кочки, но кузов плавает. На высокой скорости амортизатор «отпускает» (клапан), поэтому резкие удары он гасит не полностью. Обычно сжатие слабее отбоя, примерно в полтора-два раза.`,
-      R: () => 'Сжатие задних амортизаторов. В начале поворота или при перекладке ось с более жёстким сжатием быстрее принимает на себя вес, и её колёса раньше теряют сцепление. Жёстче сзади: острее, зад живее. Мягче сзади: спокойнее. При разгоне задние амортизаторы сжимаются, и жёсткое сжатие сзади уменьшает приседание кузова.',
-    },
-    rebound: {
-      F: () => `Отбой амортизатора (Н·с/м). Это сопротивление, когда колесо идёт вниз и пружина разжимается. Именно отбой гасит раскачку после кочки. Мало: машина продолжает качаться несколько раз после каждой неровности. Много: колесо не успевает опуститься обратно в яму или после кочки, подвеска «складывается» на серии неровностей, и колесо висит в воздухе. Отбой обычно делают в полтора-два раза сильнее сжатия. Сводка «Damping» сверху: 0,3–0,6 нормально, ниже раскачивается, выше жёстко.${truck ? ' На бездорожье слишком сильный отбой мешает колесу опуститься в яму, и машина вывешивает колесо.' : ''}`,
-      R: () => 'Отбой задних амортизаторов. Сильный отбой сзади задерживает подъём зада при торможении и сброс газа, и зад дольше остаётся нагруженным. Слабый отбой сзади: после трамплина или кочки зад качается и машину может повести. При выходе из поворота отбой определяет, как быстро кузов выравнивается из крена.',
-    },
-    arb: {
-      F: () => `Стабилизатор поперечной устойчивости (Н·м/рад). Работает только когда левая и правая сторона сжаты по-разному: в крене в повороте или когда одно колесо выше другого. На ровных кочках обеими колёсами он не работает и не делает подвеску жёстче. Жёстче: меньше крен. Но вес с внутреннего колеса переносится на внешнее этой же оси, и эта ось раньше теряет сцепление. Жёсткий передний стабилизатор: больше недостаточной поворачиваемости, перед сползает.${truck ? ' На бездорожье стабилизатор мешает диагональному вывешиванию: колесо отрывается от земли раньше. Ноль: стабилизатор отключён, лучшая артикуляция для ползания по камням, но больше крен на асфальте.' : ''}`,
-      R: () => `Задний стабилизатор. Жёстче сзади: задняя ось в повороте раньше срывается, машина охотнее поворачивает и уходит в занос (избыточная поворачиваемость). Мягче сзади: зад держит лучше и стабильнее. Самый простой способ сдвинуть баланс машины: усилить стабилизатор на той оси, которая должна срываться первой, или ослабить на той, которой не хватает сцепления.${truck ? ' У грузовика сильный задний стабилизатор делает его вертлявым при сбросе газа в повороте.' : ''}`,
-    },
-    travel: {
-      F: () => `Ход подвески на сжатие: сколько колесо может подняться от полного провиса до жёсткого упора. Последние 5 см хода занимает резиновый отбойник: там пружина резко становится жёстче, и это видно красным в режиме «Show suspension». Больше хода: подвеска реже бьёт в отбойник на кочках и прыжках, ${truck ? 'лучше артикуляция на ухабах, ' : ''}но колесо при полном сжатии поднимается выше и может задеть арку (смотри «Arch room» в разделе колёс). Меньше хода: подвеска раньше упирается, и на кочке удар идёт прямо в кузов. Высота кузова в покое от этого не меняется.`,
-      R: () => 'Ход задней подвески. Зад обычно нагружен сильнее (груз, разгон), поэтому сзади подвеска стоит ближе к отбойникам. Если в режиме «Show suspension» задние пружины часто краснеют, добавь ход сзади или сделай задние пружины жёстче.',
-    },
+// Slider explanations (shown with the (i) button): what moving the slider left (smaller value) and right
+// (bigger value) does to the car, a few words each; n: an optional one-line note. U: the car's profile
+// (U.transfer = the off-road truck), ax: 'F' or 'R' for the per-axle rows.
+function lr(key, U, ax) {
+  const truck = !!U.transfer, rear = ax === 'R';
+  const gear = { l: 'выше скорость, слабее тяга', r: 'сильнее тяга, ниже скорость' };
+  const H = {
+    'engine.torque': { l: 'слабее', r: 'сильнее' },
+    'engine.revs': { l: 'отсечка раньше', r: 'отсечка позже' },
+    gear,
+    'gearbox.final': { ...gear, n: truck ? 'С большими колёсами — вправо (4.10–4.75).' : '' },
+    'gearbox.high': gear,
+    'gearbox.low': { l: 'ползёт быстрее', r: 'медленнее, тянет сильнее' },
+    'diff.preload': { l: 'легче поворачивает', r: 'стабильнее, хуже поворачивает' },
+    'diff.power': { l: 'под газом буксует', r: 'под газом держит занос' },
+    'diff.coast': { l: 'без газа легче в поворот', r: 'без газа стабильнее' },
+    'tyres.pressF': truck ? { l: 'цепче вне дороги', r: 'острее руль' } : { l: 'перед цепче', r: 'острее руль, меньше сцепления' },
+    'tyres.pressR': truck ? { l: 'цепче вне дороги', r: 'острее, хуже на камнях' } : { l: 'зад цепче', r: 'зад легче срывается' },
+    'tyres.grip': { l: 'меньше сцепления', r: 'больше сцепления' },
+    'suspension.lift': truck ? { l: 'устойчивее', r: 'выше просвет, легче опрокинуть' } : { l: 'ниже центр масс, тесно в арках', r: 'больше просвет' },
+    'suspension.k': rear ? { l: 'зад цепче, но садится на отбойники', r: 'зад легче уходит в занос' } : { l: 'больше крен, мягче на кочках', r: 'меньше крен, перед сползает' },
+    'suspension.bump': { l: 'мягче на кочках, плавает', r: 'собраннее, удары жёстче' },
+    'suspension.rebound': { l: 'качается после кочек', r: 'не качается, колесо может висеть' },
+    'suspension.arb': rear ? { l: 'больше крен, зад цепче', r: 'зад легче уходит в занос' }
+      : { l: 'больше крен, перед цепче', r: 'меньше крен, перед сползает', n: truck ? 'На камнях лучше 0.' : '' },
+    'suspension.travel': { l: 'раньше бьёт в отбойник', r: 'колесо выше в арке' },
+    'brakes.force': { l: 'слабее', r: 'сильнее, легче заблокировать' },
+    'brakes.bias': { l: 'больше на зад: может развернуть', r: 'больше на перед: стабильнее' },
+    'brakes.handbrake': { l: 'слабее', r: 'сильнее, легче срывает зад' },
+    'mass.cargo': { l: 'легче', r: 'тяжелее, больше веса на зад' },
+    'mass.roof': { l: 'легче', r: 'тяжелее, легче опрокинуть' },
+    'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
+    'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
+    'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
   };
-  const t = T[k];
-  if (typeof t === 'function') return t();
-  return t?.[axle === 'R' ? 'R' : 'F']() ?? '';
+  return H[key] || '';
 }
 
 // slider rows: [path, label, range key, format, hint]
@@ -168,55 +171,55 @@ export class TuningPanel {
     return [
       { id: 'engine', title: 'Engine', rows: [
         { type: 'engines' },
-        sl('engine.torque', 'Torque', 'engine.torque', v => `×${f2(v)}`, 'Scales the whole torque curve: a tune, more boost, a tired engine.'),
-        sl('engine.revs', 'Rev limiter', 'engine.revs', v => `${f0(this.v.P.engine.limiterRpm)} rpm`, 'Where the engine cuts out. The automatic shifts just below it.'),
+        sl('engine.torque', 'Torque', 'engine.torque', v => `×${f2(v)}`, lr('engine.torque', U)),
+        sl('engine.revs', 'Rev limiter', 'engine.revs', v => `${f0(this.v.P.engine.limiterRpm)} rpm`, lr('engine.revs', U)),
         { type: 'curve' },
       ] },
       { id: 'trans', title: 'Transmission', rows: [
         { type: 'gearbox' },
-        ...ratios.map((r, i) => sl(`gearbox.${box}.${i}`, GEAR_NAMES[i], 'gearbox.ratio', v => f2(v), i === 0 ? 'Gear ratios: higher = more pull, lower top speed in that gear.' : '', { gear: i })),
-        sl(`gearbox.${box}Rev`, 'Reverse', 'gearbox.ratio', f2, ''),
-        sl('gearbox.final', 'Final drive', 'gearbox.final', f2, U.transfer ? 'Axle ratio. 4.10 or 4.75 is the usual fix for big tyres.' : 'Axle ratio. Shorter (higher) keeps a drift in the power band on a tight track.'),
+        ...ratios.map((r, i) => sl(`gearbox.${box}.${i}`, GEAR_NAMES[i], 'gearbox.ratio', v => f2(v), lr('gear', U), { gear: i })),
+        sl(`gearbox.${box}Rev`, 'Reverse', 'gearbox.ratio', f2, lr('gear', U)),
+        sl('gearbox.final', 'Final drive', 'gearbox.final', f2, lr('gearbox.final', U)),
         ...(U.transfer ? [
-          sl('gearbox.high', 'Transfer high', 'gearbox.high', v => v.toFixed(3), ''),
-          sl('gearbox.low', 'Transfer low', 'gearbox.low', f2, 'Low range: a bigger number crawls slower and climbs harder.'),
+          sl('gearbox.high', 'Transfer high', 'gearbox.high', v => v.toFixed(3), lr('gearbox.high', U)),
+          sl('gearbox.low', 'Transfer low', 'gearbox.low', f2, lr('gearbox.low', U)),
         ] : []),
         { type: 'gears' },
         { type: 'live' },
       ] },
       ...(U.diff ? [{ id: 'diff', title: 'Differential', rows: [
         { type: 'chips', path: 'diff.type', label: 'Rear diff', str: true, options: [['welded', 'Welded'], ['lsd', 'LSD'], ['open', 'Open']], hint: 'Welded: both rear wheels always turn together, the easiest drift. LSD: locks with the torque. Open: one wheel spins.' },
-        sl('diff.preload', 'LSD preload', 'diff.preload', v => `${f0(v)} Nm`, 'Locking torque with no throttle.'),
-        sl('diff.power', 'LSD power', 'diff.power', v => `${Math.round(v * 100)} %`, 'How hard it locks on throttle.'),
-        sl('diff.coast', 'LSD coast', 'diff.coast', v => `${Math.round(v * 100)} %`, 'How hard it locks off throttle: 1.5-way below power, 2-way equal.'),
+        sl('diff.preload', 'LSD preload', 'diff.preload', v => `${f0(v)} Nm`, lr('diff.preload', U)),
+        sl('diff.power', 'LSD power', 'diff.power', v => `${Math.round(v * 100)} %`, lr('diff.power', U)),
+        sl('diff.coast', 'LSD coast', 'diff.coast', v => `${Math.round(v * 100)} %`, lr('diff.coast', U)),
       ] }] : []),
       { id: 'tyres', title: 'Wheels and tyres', rows: [
         { type: 'chips', path: 'tyres.size', label: 'Tyre size', options: ty.sizes.map(x => [x, x + '″']), hint: `Taller tyres lift the whole ${noun} and gear it taller. Watch the arches.` },
         { type: 'chips', path: 'tyres.width', label: 'Width', options: ty.widths.map(x => [x, String(x)]) },
-        sl('tyres.pressF', 'Pressure front', 'tyres.press', press, U.transfer ? 'Lower: bigger footprint, more grip off-road, softer ride. [ ] change both.' : 'Lower: a softer, more forgiving slide. Higher: sharper response, less grip.'),
-        sl('tyres.pressR', 'Pressure rear', 'tyres.press', press, ''),
-        sl('tyres.grip', 'Compound grip', 'tyres.grip', v => `×${f2(v)}`, U.transfer ? 'Grip on every surface. Mud terrain = 1.' : 'Grip on every surface. Street tyres = 1; drifters often run less at the rear.'),
+        sl('tyres.pressF', 'Pressure front', 'tyres.press', press, lr('tyres.pressF', U)),
+        sl('tyres.pressR', 'Pressure rear', 'tyres.press', press, lr('tyres.pressR', U)),
+        sl('tyres.grip', 'Compound grip', 'tyres.grip', v => `×${f2(v)}`, lr('tyres.grip', U)),
       ] },
       { id: 'susp', title: 'Suspension', rows: [
         { type: 'suspview' },
-        sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), suspHint('lift', '', U)),
+        sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), lr('suspension.lift', U)),
         ...['k', 'bump', 'rebound', 'arb', 'travel'].flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel' }[k]} ${n}`, 'suspension.' + k,
           v => (k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
-          suspHint(k, n, U)))),
+          lr('suspension.' + k, U, n)))),
       ] },
       { id: 'brakes', title: 'Brakes', rows: [
-        sl('brakes.force', 'Brake force', 'brakes.force', v => `×${f2(v)}`, ''),
-        sl('brakes.bias', 'Front share', 'brakes.bias', v => `${Math.round(v * 100)} %`, 'More front: stable, the front locks first. More rear: the rear locks first and it spins (with ABS off).'),
-        sl('brakes.handbrake', 'Handbrake', 'brakes.handbrake', v => `×${f2(v)}`, ''),
+        sl('brakes.force', 'Brake force', 'brakes.force', v => `×${f2(v)}`, lr('brakes.force', U)),
+        sl('brakes.bias', 'Front share', 'brakes.bias', v => `${Math.round(v * 100)} %`, lr('brakes.bias', U)),
+        sl('brakes.handbrake', 'Handbrake', 'brakes.handbrake', v => `×${f2(v)}`, lr('brakes.handbrake', U)),
       ] },
       { id: 'mass', title: 'Mass', rows: [
-        sl('mass.cargo', U.cargo, 'mass.cargo', v => `${f0(v)} kg`, U.roof ? 'In the load bay behind the rear seats.' : 'In the spare-wheel well: more weight on the rear tyres.'),
-        ...(U.roof ? [sl('mass.roof', 'Roof load', 'mass.roof', v => `${f0(v)} kg`, 'On the rack: high up, it rolls the truck over sooner.')] : []),
-        sl('mass.comY', 'Centre of mass', 'mass.comY', v => sgnCm(v), 'Moves the body\'s centre of mass up or down.'),
+        sl('mass.cargo', U.cargo, 'mass.cargo', v => `${f0(v)} kg`, lr('mass.cargo', U)),
+        ...(U.roof ? [sl('mass.roof', 'Roof load', 'mass.roof', v => `${f0(v)} kg`, lr('mass.roof', U))] : []),
+        sl('mass.comY', 'Centre of mass', 'mass.comY', v => sgnCm(v), lr('mass.comY', U)),
       ] },
       { id: 'steer', title: 'Steering', rows: [
-        sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, U.transfer ? 'Road-wheel angle at full lock: a tighter turning circle.' : 'Road-wheel angle at full lock. An angle kit (55–70°) holds deeper drifts.'),
-        sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, 'Lower = quicker steering (turns of the wheel per angle).'),
+        sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, lr('steering.lock', U)),
+        sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, lr('steering.ratio', U)),
       ] },
       { id: 'body', title: 'Body and colliders', rows: [{ type: 'colliders' }] },
       { id: 'measure', title: 'Measure', rows: [{ type: 'dyno' }] },
@@ -245,7 +248,7 @@ export class TuningPanel {
       return `<div class="tn-row" data-row="${r.path}">
         <div class="tn-l"><span>${r.label}</span><output></output></div>
         <div class="tn-rng"><input type="range" min="${min}" max="${max}" step="${step}" data-path="${r.path}" aria-label="${escapeHTML(r.label)}" title="Double-click: stock"><i style="left:${tick}%"></i></div>
-        ${r.hint ? `<div class="tn-h">${r.hint}</div>` : ''}</div>`;
+        ${r.hint ? this.hintHTML(r.hint) : ''}</div>`;
     }
     if (r.type === 'chips') return `<div class="tn-row" data-row="${r.path}"><div class="tn-l"><span>${r.label}</span><output></output></div>
       <div class="tn-chips">${r.options.map(([v, l]) => `<button type="button" data-chip="${r.path}" data-v="${v}">${l}</button>`).join('')}</div>${r.hint ? `<div class="tn-h">${r.hint}</div>` : ''}</div>`;
@@ -265,7 +268,7 @@ export class TuningPanel {
       <div class="tn-boxed"></div>`;
     if (r.type === 'suspview') return `<div class="tn-row">
         <div class="tn-l"><span>Show suspension</span><button type="button" class="switch" data-act="suspview" role="switch" aria-label="Show suspension"><span class="knob"></span></button></div>
-        <div class="tn-h">Springs (blue: unloaded, green: static, orange: loaded, red: on the bump stop), damper force beside them (up blue: bump, down orange: rebound), travel gauges (blue tick: static ride height, white: recent peak), tyre load arrows (the tick is the static load) and the axle lines. No collision boxes.</div>
+        <div class="tn-h">Пружины (цвет — нагрузка, красный — на отбойнике), амортизаторы, ход подвески и нагрузка на колёса. Без коробок столкновений.</div>
         <div class="tn-susplive"></div>
       </div>`;
     if (r.type === 'dyno') return `<div class="tn-row">
@@ -276,6 +279,12 @@ export class TuningPanel {
         <div class="tn-launch"></div>
       </div>`;
     return '';
+  }
+
+  // slider explanation: { l, r, n } = what the left and right ends do, under each end; or plain text
+  hintHTML(h) {
+    if (typeof h === 'string') return `<div class="tn-h">${h}</div>`;
+    return `<div class="tn-h tn-lr"><span>← ${h.l}</span><span>${h.r} →</span></div>${h.n ? `<div class="tn-h">${h.n}</div>` : ''}`;
   }
 
   // collider editor for the selected box
