@@ -32,7 +32,8 @@ const GROUP_WHEEL_SIDE = (WHEEL_BIT << 16) | (0xffff & ~GROUND_BIT);
 
 // Keyboard steering assist (Settings): a held key asks for the angle that corners at k x the current grip
 // limit plus c x the front tyres' peak slip angle. 'off' = full lock at any speed.
-export const STEER_ASSIST = { strong: { k: 1.2, c: 0.5 }, light: { k: 1.6, c: 0.6 } };
+// keyboard steering limit: the front tyres' slip angle may reach slip x their peak slip angle
+export const STEER_ASSIST = { strong: { slip: 1.0 }, light: { slip: 1.6 } };
 
 export class Vehicle {
   constructor(RAPIER, world, P, opts = {}) {
@@ -276,19 +277,28 @@ export class Vehicle {
     c.brake = brake;
     c.clutch = raw.clutch;
     c.handbrake = this.handbrakeLogic(raw, h);
-    // steering: speed sensitive limit (an input filter: what the "driver" asks for; the physics is the same
-    // in every mode). A held key can't be dosed like a wheel, so at speed it asks for the angle that corners
-    // at k x the grip under the truck right now (surface, pressure, tyre grip), plus c x the front tyres'
-    // peak slip angle. Strong stays just past the limit, light goes well past it (tap and release to dose).
+    // steering limit (an input filter: what the "driver" asks for; the physics is the same in every mode).
+    // Keyboard: a held key turns the front wheels only as far as the front tyres still turn the car, i.e. to
+    // the front axle's direction of travel plus slip x the tyres' peak slip angle (surface, load). Past that
+    // the fronts only scrub and the car goes straight on. Into a slide (countersteer) that allows a lot of
+    // lock, out of it none. Below ~3 m/s, and reversing, full lock.
     const v = Math.abs(this.speed), maxA = this.P.steer.maxAngle;
     this.updateGripEstimate(h);
-    let lim = 1;
-    if (raw.analogSteer) lim = 1 / (1 + Math.max(0, v - 8) / 30);
+    let lim = maxA;
+    if (raw.analogSteer) lim = maxA / (1 + Math.max(0, v - 8) / 30);
     else {
       const a = STEER_ASSIST[this.steerAssist];
-      if (a) lim = Math.min(1, (Math.atan(this.P.wheelbase * a.k * this.gripG * G / Math.max(v * v, 1e-3)) + a.c * this.gripSlip) / maxA);
+      const vx = this.vel.dot(this.fwd);
+      if (a && vx > 3 && raw.steer !== 0) {
+        const vy = this.vel.dot(this.right), r = this.angVel.dot(this.up);
+        const fa = Math.atan2(vy - r * (this.P.wheelbase / 2 + this.P.com[2]), vx);   // front axle's travel
+        const pk = a.slip * this.gripSlip;
+        const useful = raw.steer > 0 ? fa + pk : pk - fa;
+        const k = Math.min(1, (vx - 3) / 3);                                           // fade in 3..6 m/s
+        lim = maxA + (Math.max(0, Math.min(maxA, useful)) - maxA) * k;
+      }
     }
-    const target = raw.steer * maxA * lim;
+    const target = raw.steer * lim;
     // rad/s at the road wheel: steer.rate at the steer.rateRatio rack, quicker with a lower ratio (truck: 1.35 at 17:1)
     const S = this.P.steer, rate = (S.rate ?? 1.35) * (S.rateRatio ?? 17) / S.ratio;
     this.steerAngle += Math.max(-rate * h, Math.min(rate * h, target - this.steerAngle));

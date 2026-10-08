@@ -8,7 +8,7 @@ export const DEFAULTS = {
   autoClutch: true,
   arcadeAuto: false,        // automatic gearbox: hold S at a stop to reverse (off: select R like a real car)
   handbrake: 'hold',        // 'hold' (while pressed) | 'toggle' | 'auto' (tap toggles, long press holds)
-  steerAssist: 'strong',    // keyboard steering at speed: 'strong' (~0.75 g) | 'light' (gamepad curve) | 'off' (full lock)
+  steerAssist: 'strong',    // keyboard steering at speed: 'strong' (front tyres at peak slip) | 'light' (1.6x) | 'off' (full lock)
   camera: 'chase',
   time: 13,                 // time of day in hours, 0..24 (13 = day, 19.5 = dusk, 23 = night)
   muted: false,

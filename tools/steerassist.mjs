@@ -1,4 +1,5 @@
-// Keyboard steering assist: hold the steering key at speed on flat ground, per surface and assist mode.
+// Keyboard steering assist (front tyres held at their peak slip angle): hold the steering key at speed on
+// flat ground, per surface and assist mode.
 //   node tools/steerassist.mjs [surfaces] [modes] [speeds]    e.g. dirt,grass strong,light 60,90
 // Prints the grip estimate, the wheel angle the held key reaches, the lateral g it settles at, body slip,
 // front / rear slip angles, and spins / rollovers (4 s held, then 3 s released). FULL=1 floors the gas meanwhile.
