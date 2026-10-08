@@ -149,18 +149,21 @@ export function makeS15Params() {
     // Per corner: k is the wheel rate (N/m at the wheel), bump / rebound the damping at the wheel, mass the
     // axle's unsprung mass (both corners). arb is the bar's roll stiffness (N·m/rad), rcY the roll centre
     // height (a lowered strut car's sits near the ground), anti the anti-dive / anti-squat fraction.
+    // preload: the coilovers' spring preload (m), so at static ride each corner sits ~2 cm into its travel
+    // with ~4 cm left before the bump stops, like a set-up coilover; droopY is raised by the same amount so
+    // the ride height is unchanged (less droop travel instead).
     suspension: 'independent',
     axles: [
       {
-        name: 'front', z: -wheelbase / 2, droopY: 0.29, travel: 0.11,
-        mass: 90, k: 70000, preload: 0.0,
+        name: 'front', z: -wheelbase / 2, droopY: 0.311, travel: 0.11,
+        mass: 90, k: 70000, preload: 0.021,
         bump: 2600, rebound: 4500, damperKnee: 0.15, damperHigh: 0.5,
         arb: 9000, rcY: 0.05, anti: 0.15,
         steered: true,
       },
       {
-        name: 'rear', z: wheelbase / 2, droopY: 0.277, travel: 0.11,
-        mass: 90, k: 45000, preload: 0.0,
+        name: 'rear', z: wheelbase / 2, droopY: 0.316, travel: 0.11,
+        mass: 90, k: 45000, preload: 0.039,
         bump: 2200, rebound: 3800, damperKnee: 0.15, damperHigh: 0.5,
         arb: 3000, rcY: 0.09, anti: 0.3,
         steered: false,
