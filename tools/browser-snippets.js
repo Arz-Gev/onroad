@@ -1,9 +1,3 @@
-// Paste into the page console (or javascript_tool) after the game has loaded.
-// Lets you drive and capture frames without relying on requestAnimationFrame,
-// which a hidden browser pane / background tab throttles to ~0.
-
-// 1. Capture the canvas right after rendering and POST it to tools/shotserver.py (port 5199).
-//    Run the server first:  SHOT_DIR=/some/dir python3 tools/shotserver.py
 window.shot = async (name, ticks = 2) => {
   const g = window.game;
   for (let i = 0; i < ticks; i++) g.tick(1 / 60);
@@ -11,7 +5,6 @@ window.shot = async (name, ticks = 2) => {
   return (await fetch('http://127.0.0.1:5199/?name=' + name, { method: 'POST', body: url })).status;
 };
 
-// 2. Straight-line driver for the proving-ground lanes (teleport index 1..5).
 window.laneDriver = (laneX, targetKmh, thrMax = 0.6) => (v) => {
   const xErr = v.pos.x - laneX;
   const wantYaw = Math.max(-0.5, Math.min(0.5, xErr * 0.3));
@@ -32,9 +25,7 @@ window.runLane = (idx, kmh, secs, setup, thr) => {
   g.autopilot = null;
   return log;
 };
-// e.g. runLane(4, 6, 25, d => { d.range = 'low'; d.centerLock = true; })   // 20/30/35 deg ramps
 
-// 3. Pure-pursuit driver along the main trail loop that slows for corners (lateral ~0.35 g).
 window.trailDriver = (kmh) => {
   const curve = window.game.terrain.trailCurves[0];
   const pts = curve.getSpacedPoints(2000), seg = curve.getLength() / 2000;
@@ -56,6 +47,3 @@ window.trailDriver = (kmh) => {
     return { throttle: sp < target ? 0.75 : 0, brake: sp > target + 6 ? 0.6 : 0, steer, clutch: 0, handbrake: 0, analogSteer: true };
   };
 };
-// e.g. game.placeVehicle(0, 40, 0); game.autopilot = trailDriver(60); for (let i = 0; i < 1800; i++) game.tick(1/60);
-
-// 4. Frame budget: game.timings holds smoothed ms per stage (physics, view, dust, audio, hud, render).

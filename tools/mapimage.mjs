@@ -1,5 +1,3 @@
-// Shaded relief of the generated map (surfaces, trails, water, contour lines) as a PNG, for designing
-// the layout without starting the game.   node tools/mapimage.mjs out.png [pixelsPerMetre=1] [x0 z0 x1 z1]
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { Terrain, MAP_SIZE, SURF } from '../src/world/terrain.js';
@@ -25,7 +23,7 @@ for (let py = 0; py < Hh; py++) for (let px = 0; px < W; px++) {
   lit = 0.35 + 0.75 * lit;
   let c = Math.abs(x) <= half && Math.abs(z) <= half ? COL[t.surfaceId(x, z)] : [110, 120, 110];
   c = c.map(v => v * lit);
-  // contours every 5 m (darker every 25 m)
+
   const fr = h / 5 - Math.floor(h / 5);
   if (fr < 0.06 * ppm / 1) c = c.map(v => v * (Math.round(h / 5) % 5 === 0 ? 0.55 : 0.8));
   const wl = t.waterLevelAt(x, z);
@@ -34,7 +32,7 @@ for (let py = 0; py < Hh; py++) for (let px = 0; px < W; px++) {
   const o = (py * W + px) * 3;
   img[o] = Math.min(255, c[0]); img[o + 1] = Math.min(255, c[1]); img[o + 2] = Math.min(255, c[2]);
 }
-// PNG encode
+
 const crcTable = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c; });
 const crc = b => { let c = -1; for (const v of b) c = crcTable[(c ^ v) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; };
 const chunk = (type, data) => { const l = Buffer.alloc(4); l.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };

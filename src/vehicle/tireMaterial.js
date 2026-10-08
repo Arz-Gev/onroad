@@ -1,10 +1,5 @@
 import * as THREE from 'three';
 
-// Tyre material whose vertex shader squashes the tyre against the physics contact plane.
-// The plane (point + normal) is passed in the tyre's object space every frame. Vertices that would
-// sink below the ground are flattened onto it (the contact patch); the sidewalls near the patch bulge
-// outward in proportion to the radial deflection, like a real aired-down tyre.
-
 export function createTireMaterial(map) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, map, roughness: 0.86, metalness: 0.0 });
   const uniforms = {
@@ -29,7 +24,6 @@ vec3 defPos = position;
   float side = smoothstep(0.05, 0.13, abs(ax));
   float r = length(defPos.yz);
   float wall = 1.0 - smoothstep(0.36, 0.415, r);
-  // sidewall bulge next to the contact patch
   float bulge = uDefl * 0.6 * near * side * (0.35 + 0.65 * wall);
   defPos.x += sign(ax) * bulge;
   float flt = 0.0;

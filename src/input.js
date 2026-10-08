@@ -1,15 +1,5 @@
-// Keyboard + gamepad input. Digital keys are ramped like real pedals so you can feather the throttle.
-//
-// BINDINGS is the single source of truth for every control: main.js dispatches the discrete actions,
-// and the HUD hints, the welcome card and the menu's controls page are all generated from it.
-// Discrete actions fire immediately from the key/pad event (onAction), not from the game loop.
-// While a menu is open, uiHandler receives the keys / pad buttons instead of the game.
-
-// standard-mapping gamepad buttons
 export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, LS: 10, RS: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 
-// keys: labels shown to the player. codes: KeyboardEvent.code values that fire the action.
-// pad: label of the gamepad control. button: pad button index that fires the action.
 export const BINDINGS = [
   { id: 'throttle', group: 'Driving', label: 'Throttle', keys: ['W', '↑'], pad: 'RT' },
   { id: 'brake', group: 'Driving', label: 'Brake', keys: ['S', '↓'], pad: 'LT' },
@@ -57,15 +47,12 @@ for (const b of BINDINGS) {
   for (const c of b.codes || []) KEY_ACTION[c] = b.id;
   if (b.button !== undefined) PAD_ACTION[b.button] = b.id;
 }
-// The F row stays with the browser (F5 reload, F11 fullscreen, F12 devtools), except the bound F3.
-// Every other plain key is swallowed while driving: no page scroll (Space, arrows), no focus moves (Tab),
-// no single-key browser features such as Firefox quick find (/ and ').
+
 const BROWSER_KEY = /^F\d+$/;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const padClass = l => ({ A: ' pad-a', B: ' pad-b', X: ' pad-x', Y: ' pad-y' })[l] || '';
 
-// keycap HTML for an action on the given device ('kb' | 'pad'). Falls back to the keyboard label.
 export function capsHTML(id, device = 'kb', { all = false } = {}) {
   const b = BINDING[id];
   if (!b) return '';
@@ -81,21 +68,19 @@ export function padCapHTML(id) {
 export class Input {
   constructor(el) {
     this.keys = new Set();
-    this.pressed = new Set();      // edge-triggered this frame (kept for console tests)
+    this.pressed = new Set();
     this.raw = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0, analogSteer: false };
     this.mouse = { dx: 0, dy: 0, wheel: 0, down: false, lastMove: 0 };
-    this.device = 'kb';            // last used: 'kb' | 'pad'
-    this.onAction = null;          // (id, device) => void
-    this.onDevice = null;          // (device) => void
-    this.uiHandler = null;         // (event) => bool handled; set while a menu is open
+    this.device = 'kb';
+    this.onAction = null;
+    this.onDevice = null;
+    this.uiHandler = null;
     this.padPrev = {};
     this.padRepeat = {};
 
     window.addEventListener('keydown', e => {
-      // typing in a text field (tuning panel: setup name, import box) is not driving
       if (e.target?.matches?.('input[type=text], textarea, select')) return;
-      // let browser / OS shortcuts through untouched (Cmd+R, Ctrl+W, Cmd+L, ...).
-      // On macOS no keyup arrives for keys held while Cmd is down, so drop held keys to avoid stuck pedals.
+
       if (e.metaKey || e.ctrlKey || e.altKey) { if (e.key === 'Meta') this.keys.clear(); return; }
       this.setDevice('kb');
       if (this.uiHandler) { if (this.uiHandler({ type: 'key', e })) e.preventDefault(); return; }
@@ -126,7 +111,6 @@ export class Input {
     if (this.onDevice) this.onDevice(d);
   }
 
-  // drop held keys and pedal ramps (menu opened, focus lost)
   reset() {
     this.keys.clear();
     this.pressed.clear();
@@ -137,26 +121,24 @@ export class Input {
   down(...codes) { return codes.some(c => this.keys.has(c)); }
   hit(code) { return this.pressed.has(code); }
 
-  // call once per rendered frame
   update(dt) {
     const r = this.raw;
     const up = this.down('KeyW', 'ArrowUp'), dn = this.down('KeyS', 'ArrowDown');
     const lt = this.down('KeyA', 'ArrowLeft'), rt = this.down('KeyD', 'ArrowRight');
-    // pedal ramps (keyboard)
+
     const ramp = (cur, on, upRate, downRate) => on ? Math.min(1, cur + upRate * dt) : Math.max(0, cur - downRate * dt);
-    let thr = ramp(this._thr || 0, up, 2.2, 5);
-    let brk = ramp(this._brk || 0, dn, 3.5, 6);
+    let thr = ramp(this._thr || 0, up, 6.5, 10);
+    let brk = ramp(this._brk || 0, dn, 8, 12);
     this._thr = thr; this._brk = brk;
     let steer = this._steer || 0;
     const target = (rt ? 1 : 0) - (lt ? 1 : 0);
-    const rate = target === 0 ? 3.2 : (Math.sign(target) !== Math.sign(steer) && steer !== 0 ? 4.5 : 2.0);
+    const rate = target === 0 ? 6 : (Math.sign(target) !== Math.sign(steer) && steer !== 0 ? 8 : 4);
     steer += Math.max(-rate * dt, Math.min(rate * dt, target - steer));
     this._steer = steer;
     let clutch = this.down('ShiftLeft', 'ShiftRight') ? 1 : 0;
     let hb = this.down('Space') ? 1 : 0;
     r.analogSteer = false;
 
-    // gamepad (standard mapping)
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = [...pads].find(p => p && p.connected);
     if (gp) {
@@ -166,7 +148,6 @@ export class Input {
       if (active) this.setDevice('pad');
       const edge = i => { const p = !!gp.buttons[i]?.pressed; const e = p && !this.padPrev[i]; this.padPrev[i] = p; return e; };
       if (this.uiHandler) {
-        // menu navigation: d-pad / left stick with key-repeat, A accept, B back, LB/RB tabs
         const now = performance.now();
         const dir = (name, held) => {
           const st = this.padRepeat[name] || (this.padRepeat[name] = { on: false, next: 0 });
@@ -194,14 +175,14 @@ export class Input {
         if (gp.buttons[PAD.A]?.pressed) hb = 1;
         if (gp.buttons[PAD.LB]?.pressed) clutch = 1;
         for (const i in PAD_ACTION) if (edge(+i) && this.onAction) this.onAction(PAD_ACTION[i], 'pad');
-        // right stick looks around
+
         this.mouse.dx += (gp.axes[2] || 0) * 14; this.mouse.dy += (gp.axes[3] || 0) * 10;
         if (Math.abs(gp.axes[2] || 0) > 0.2 || Math.abs(gp.axes[3] || 0) > 0.2) this.mouse.lastMove = performance.now();
       } else {
         for (const i in PAD_ACTION) this.padPrev[i] = !!gp.buttons[i]?.pressed;
       }
     }
-    r.throttle = thr; r.brake = brk; r.steer = steer; r.clutch = clutch; r.handbrake = hb;
+    r.throttle = thr; r.brake = brk; r.steer = steer; r.steerKey = r.analogSteer ? steer : target; r.clutch = clutch; r.handbrake = hb;
   }
 
   endFrame() {

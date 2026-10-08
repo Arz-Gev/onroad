@@ -2,16 +2,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { NOISE_GLSL } from './textures.js';
 
-// Water: the lake, the stream (with the ford on the outer loop) and muddy pools in the mud holes.
-// Visual only (the physics has no water): every surface lies over a real terrain bed the truck drives on.
-// - The depth of the water column comes from the physics heightfield in the shader (same triangle split),
-//   so there is no depth pre-pass: shallow water shows the bed, deep water absorbs it, the waterline is soft.
-// - Lit as a smooth dielectric (MeshStandardMaterial underneath): sky reflection from the environment map,
-//   sun glints, tree shadows; Fresnel decides how much of the bed shows through (premultiplied blending).
-// - Ripples: a baked tileable normal map, two layers; the stream's layers scroll down the flow, faster
-//   where it is steep; foam along the shore and in fast shallow water.
-
-const RIPPLE_FRAG = /* glsl */`
+const RIPPLE_FRAG =`
 ${NOISE_GLSL}
 varying vec2 vUv;
 float H(vec2 uv) {
@@ -21,7 +12,6 @@ float H(vec2 uv) {
 void main() {
   float e = 1.0 / 2048.0;
   float h0 = H(vUv), hx = H(vUv + vec2(e, 0.0)), hy = H(vUv + vec2(0.0, e));
-  // slope in "per tile" units, scaled down to gentle ripples (the shader scales it again)
   vec2 sl = vec2(h0 - hx, h0 - hy) / e * 0.012;
   vec3 n = normalize(vec3(sl, 1.0));
   float foam = pfbm(vUv + 0.37, 12.0, 3);
@@ -39,20 +29,20 @@ function bakeRipples(renderer, size = 512) {
   return rt.texture;
 }
 
-const WATER_VERT_PARS = /* glsl */`
-attribute vec3 aFlow;   // along (m), across (m), flow speed (m/s)
-attribute vec2 aDir;    // flow direction in world xz
+const WATER_VERT_PARS =`
+attribute vec3 aFlow;
+attribute vec2 aDir;
 varying vec3 vFlow;
 varying vec2 vDir;
 varying vec3 vWPos;
 `;
 
-const WATER_FRAG_PARS = /* glsl */`
+const WATER_FRAG_PARS =`
 uniform sampler2D tRipple;
 uniform highp sampler2D tHeight;
 uniform vec4 uMap;
 uniform float uTime, uAbsorb, uRipple, uFoam;
-uniform vec4 uEdge;   // elliptic fade-out of a disc (centre xz, 1/rx, 1/rz); zero radii: no fade
+uniform vec4 uEdge;
 uniform vec3 uScatter;
 varying vec3 vFlow;
 varying vec2 vDir;
@@ -94,7 +84,6 @@ wDepth = vWPos.y - wGround(vWPos.xz);
 if (wDepth < -0.03) discard;`)
         .replace('#include <normal_fragment_begin>', `
 float faceDirection = 1.0;
-// ripples in the flow frame (x across, y along), then rotated into world xz
 float dist = length(vWPos - cameraPosition);
 float spd = vFlow.z;
 vec2 fp = vec2(vFlow.y, vFlow.x);
@@ -107,7 +96,6 @@ vec2 slW = across * sl.x + vDir * sl.y;
 vec3 nW = normalize(vec3(-slW.x, 1.0, -slW.y));
 vec3 normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
 vec3 nonPerturbedNormal = normal;
-// foam: along the waterline, and in fast shallow water
 float foamN = r1.b * 0.6 + r2.b * 0.4;
 wFoam = uFoam * (smoothstep(0.1, 0.0, wDepth) * 0.7 + smoothstep(0.35, 0.05, wDepth) * smoothstep(0.6, 1.6, spd) * 0.8);
 wFoam = clamp(wFoam * smoothstep(0.42, 0.62, foamN) * 1.6, 0.0, 1.0) * (1.0 - smoothstep(30.0, 80.0, dist));`)
@@ -123,7 +111,6 @@ wFoam = clamp(wFoam * smoothstep(0.42, 0.62, foamN) * 1.6, 0.0, 1.0) * (1.0 - sm
   float a = 1.0 - T * (1.0 - Fr);
   col = mix(col, irr * 0.8, wFoam); a = mix(a, 1.0, wFoam);
   float edge = smoothstep(-0.03, 0.05, wDepth);
-  // the disc's rim: stray hollows near the shore inside it are not part of the lake
   if (uEdge.z > 0.0) edge *= smoothstep(1.0, 0.97, length((vWPos.xz - uEdge.xy) * uEdge.zw));
   gl_FragColor = vec4(col * edge, a * edge);
 }`)
@@ -157,7 +144,7 @@ wFoam = clamp(wFoam * smoothstep(0.42, 0.62, foamN) * 1.6, 0.0, 1.0) * (1.0 - sm
     g.computeBoundingSphere();
     return g;
   };
-  // elliptic disc (lake, pools): world coordinates as the flow frame, no flow
+
   const disc = (cx, cz, rx, rz, y, rings = 10, segs = 72) => {
     const pos = [cx, y, cz], flow = [cx, cz, 0], dir = [0, 1], idx = [];
     for (let r = 1; r <= rings; r++) for (let s = 0; s < segs; s++) {
@@ -187,7 +174,6 @@ wFoam = clamp(wFoam * smoothstep(0.42, 0.62, foamN) * 1.6, 0.0, 1.0) * (1.0 - sm
     if (w.type === 'lake') { add(disc(w.x, w.z, w.rx, w.rz, w.level), lakeMat); lakeMat.userData.uniforms.uEdge.value.set(w.x, w.z, 1 / w.rx, 1 / w.rz); }
     else if (w.type === 'pool') add(disc(w.x, w.z, w.rx, w.rz, w.level, 4, 40), mudMat);
     else if (w.type === 'stream') {
-      // ribbon along the stream, wider than the water so the waterline comes from the bed
       const pts = w.pts, n = pts.length, lake = terrain.lake;
       const pos = [], flow = [], dir = [], idx = [];
       const ACROSS = [-1, -0.5, 0, 0.5, 1];

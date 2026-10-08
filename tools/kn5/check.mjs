@@ -1,5 +1,3 @@
-// Is a car or track convertible? node tools/kn5/check.mjs <folder or .kn5> [...]
-// Prints each .kn5 found and whether Custom Shaders Patch encrypted it (encrypted ones can't be converted).
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -1,8 +1,3 @@
-// Offline render of an engine start (the real drivetrain physics + the engine worklet) to WAV, so the
-// start can be compared with recordings (spectrogram: ffmpeg -i start.wav -lavfi showspectrumpic=... x.png).
-//   node tools/startsound.mjs [out.wav] [seconds]
-// 0.5 s of silence (engine off, parked in P), then I is pressed. The game sends the worklet its
-// parameters once per frame (60 Hz, setTargetAtTime 10 ms); this does the same.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -40,13 +35,13 @@ for (let i = 0; i < N; i += 128) {
   const tb = i / SR;
   if (!started && tb >= 0.5) { d.startEngine(); started = true; }
   while (physT < tb) { v.step(H, raw); world.step(); physT += H; }
-  if (tb >= frameT) { // one game frame: new targets
+  if (tb >= frameT) {
     frameT += 1 / 60;
     tgt.rpm = d.rpm; tgt.load = Math.max(0, Math.min(1, d.load)); tgt.throttle = d.thr;
     prm.starter[0] = d.cranking ? 1 : 0; prm.running[0] = d.running ? d.fire : 0;
     if (Math.round(tb * 60) % 6 === 0) log.push(`${tb.toFixed(2)}s ${Math.round(d.rpm)}rpm${d.cranking ? ' crank' : ''}${d.running ? ' run' : ''}`);
   }
-  const k = 1 - Math.exp(-(128 / SR) / 0.01);   // setTargetAtTime(…, 0.01)
+  const k = 1 - Math.exp(-(128 / SR) / 0.01);
   prm.rpm[0] += (tgt.rpm - prm.rpm[0]) * k;
   prm.load[0] += (tgt.load - prm.load[0]) * (1 - Math.exp(-(128 / SR) / 0.03));
   prm.throttle[0] += (tgt.throttle - prm.throttle[0]) * (1 - Math.exp(-(128 / SR) / 0.03));

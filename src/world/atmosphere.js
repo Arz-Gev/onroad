@@ -1,7 +1,3 @@
-// Single-scattering atmosphere (Nishita) shared by the CPU (sun colour, fog colours) and the GPU
-// (the sky-view LUT in sky.js). Units: metres; radiance is relative to the light's illuminance
-// at the top of the atmosphere, so `illum * scatter(...)` is in the same units as the lights.
-
 export const ATM = {
   Re: 6360e3, Ra: 6420e3, Hr: 8000, Hm: 1200,
   betaR: [5.8e-6, 13.5e-6, 33.1e-6],
@@ -10,7 +6,6 @@ export const ATM = {
 };
 
 const raySphere = (oy, dx, dy, dz, ox, oz, R) => {
-  // origin (ox, oy, oz) relative to the planet centre, unit direction d
   const b = ox * dx + oy * dy + oz * dz;
   const c = ox * ox + oy * oy + oz * oz - R * R;
   const disc = b * b - c;
@@ -19,7 +14,6 @@ const raySphere = (oy, dx, dy, dz, ox, oz, R) => {
   return [-b - s, -b + s];
 };
 
-// optical depth (Rayleigh, Mie) from a point to the top of the atmosphere along d; null if the planet blocks it
 function lightDepth(px, py, pz, dx, dy, dz, steps = 8) {
   const g = raySphere(py, dx, dy, dz, px, pz, ATM.Re);
   if (g && g[0] > 0) return null;
@@ -35,14 +29,12 @@ function lightDepth(px, py, pz, dx, dy, dz, steps = 8) {
   return [r, m];
 }
 
-// transmittance from the eye towards direction l (the colour of the sun or moon at the ground)
 export function transmittance(l) {
   const od = lightDepth(0, ATM.Re + ATM.eyeH, 0, l[0], Math.max(l[1], -0.2), l[2], 32);
   if (!od) return [0, 0, 0];
   return ATM.betaR.map(b => Math.exp(-(b * od[0] + ATM.betaM * ATM.mieExt * od[1])));
 }
 
-// in-scattered radiance along view direction v, light from direction l (both unit [x, y, z])
 export function scatter(v, l, steps = 24, noMie = false) {
   const oy = ATM.Re + ATM.eyeH;
   const top = raySphere(oy, v[0], v[1], v[2], 0, 0, ATM.Ra);
@@ -77,8 +69,7 @@ export function scatter(v, l, steps = 24, noMie = false) {
   return [0, 1, 2].map(c => sR[c] * ATM.betaR[c] * pr + sM[c] * ATM.betaM * pm);
 }
 
-// GLSL version of scatter() for the sky-view LUT (same constants)
-export const ATMOSPHERE_GLSL = /* glsl */`
+export const ATMOSPHERE_GLSL =`
 const float A_Re = ${ATM.Re.toFixed(1)};
 const float A_Ra = ${ATM.Ra.toFixed(1)};
 const float A_Hr = ${ATM.Hr.toFixed(1)};

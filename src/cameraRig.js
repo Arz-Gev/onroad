@@ -59,7 +59,7 @@ export class CameraRig {
       const gy = this.terrain.heightAt(desired.x, desired.z) + 0.7;
       if (desired.y < gy) desired.y = gy;
       if (this.first) this.smoothPos.copy(desired);
-      // a little vertical lag so bumps read without shaking the view
+
       const ky = 1 - Math.exp(-dt * 7), kh = 1 - Math.exp(-dt * 18);
       this.smoothPos.x += (desired.x - this.smoothPos.x) * kh;
       this.smoothPos.z += (desired.z - this.smoothPos.z) * kh;
@@ -72,7 +72,6 @@ export class CameraRig {
       if (idle) { this.lookYaw *= Math.exp(-dt * 1.5); this.lookPitch *= Math.exp(-dt * 1.5); }
       let eye;
       if (this.mode === 'cockpit') {
-        // head inertia: the head lags behind the body accelerations, sprung by the neck
         const inv = _q.copy(quat).invert();
         const a = _v2.copy(vehicle.accel).applyQuaternion(inv);
         const target = new THREE.Vector3(-a.x * 0.0032, -a.y * 0.0022, -a.z * 0.0036);
@@ -84,7 +83,6 @@ export class CameraRig {
         eye = model.driverEye.clone().add(this.head);
         near = 0.03; fov = 62;
       } else {
-        // on the bonnet, just behind the raised centre section
         eye = new THREE.Vector3(0, 1.8, -1.0);
         near = 0.08; fov = 60;
       }

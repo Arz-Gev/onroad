@@ -2,9 +2,6 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-// Small procedural-modelling toolkit for the truck. Everything is built from boxes, rounded boxes,
-// extruded 2D profiles, tubes and lathes, then merged per material by mergeStatic().
-
 export function mesh(geo, mat, x = 0, y = 0, z = 0) {
   const o = new THREE.Mesh(geo, mat);
   o.position.set(x, y, z);
@@ -17,7 +14,6 @@ export const rbox = (w, h, d, r, mat, x = 0, y = 0, z = 0, seg = 2) =>
   mesh(new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2 - 1e-4, h / 2 - 1e-4, d / 2 - 1e-4)), mat, x, y, z);
 export const box = (w, h, d, mat, x = 0, y = 0, z = 0) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z);
 
-// box spanning [x0,x1] x [y0,y1] x [z0,z1], optionally with rounded edges
 export function span(x0, x1, y0, y1, z0, z1, mat, r = 0) {
   if (x0 > x1) [x0, x1] = [x1, x0];
   if (y0 > y1) [y0, y1] = [y1, y0];
@@ -28,7 +24,7 @@ export function span(x0, x1, y0, y1, z0, z1, mat, r = 0) {
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
-// cylinder between two points
+
 export function bar(a, b, r, mat, seg = 10, r2 = r) {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
   const len = A.distanceTo(B);
@@ -38,7 +34,6 @@ export function bar(a, b, r, mat, seg = 10, r2 = r) {
   return m;
 }
 
-// tube along a polyline with rounded corners (corner radius rc)
 export function pipe(points, r, mat, rc = 0.06, seg = 8, closed = false) {
   const P = points.map(p => new THREE.Vector3(...p));
   const path = new THREE.CurvePath();
@@ -64,17 +59,15 @@ export function pipe(points, r, mat, rc = 0.06, seg = 8, closed = false) {
   return mesh(geo, mat);
 }
 
-// side profile (z, y) extruded across x, centred on x = 0
 export function extrudeProfile(points, depth, mat, bevel = 0.015, holes = [], curveSegments = 6) {
   const shape = new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z, y)));
   for (const h of holes) shape.holes.push(h);
   const geo = new THREE.ExtrudeGeometry(shape, { depth: depth - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments });
   geo.translate(0, 0, -(depth - 2 * bevel) / 2);
-  geo.rotateY(-Math.PI / 2); // shape x -> world z, extrusion -> world x
+  geo.rotateY(-Math.PI / 2);
   return mesh(geo, mat);
 }
 
-// front profile (x, y) extruded along z, centred on z = 0
 export function extrudeFront(points, depth, mat, bevel = 0.01, holes = [], curveSegments = 8) {
   const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
   for (const h of holes) shape.holes.push(h);
@@ -83,7 +76,6 @@ export function extrudeFront(points, depth, mat, bevel = 0.01, holes = [], curve
   return mesh(geo, mat);
 }
 
-// plan profile (x, z) extruded along y, bottom at y = 0
 export function extrudePlan(points, height, mat, bevel = 0.01, curveSegments = 8) {
   const shape = new THREE.Shape(points.map(([x, z]) => new THREE.Vector2(x, -z)));
   const geo = new THREE.ExtrudeGeometry(shape, { depth: Math.max(1e-4, height - 2 * bevel), bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments });
@@ -92,7 +84,6 @@ export function extrudePlan(points, height, mat, bevel = 0.01, curveSegments = 8
   return mesh(geo, mat);
 }
 
-// rounded rectangle path/shape helpers (2D)
 export function roundRect(shapeOrPath, x0, y0, x1, y1, r) {
   const s = shapeOrPath;
   r = Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2);
@@ -106,7 +97,6 @@ export function roundRect(shapeOrPath, x0, y0, x1, y1, r) {
 export const rrShape = (x0, y0, x1, y1, r) => roundRect(new THREE.Shape(), x0, y0, x1, y1, r);
 export const rrPath = (x0, y0, x1, y1, r) => roundRect(new THREE.Path(), x0, y0, x1, y1, r);
 
-// flat rounded-rect plate, normal along +z, centred at the origin in z
 export function plate(x0, y0, x1, y1, r, depth, mat, bevel = 0.004, holes = []) {
   const s = rrShape(x0, y0, x1, y1, r);
   for (const h of holes) s.holes.push(h);
@@ -115,13 +105,10 @@ export function plate(x0, y0, x1, y1, r, depth, mat, bevel = 0.004, holes = []) 
   return mesh(geo, mat);
 }
 
-// ring (frame) around a rounded rectangle: outer = inner grown by w
 export function frame(x0, y0, x1, y1, r, w, depth, mat, bevel = 0.003) {
   return plate(x0 - w, y0 - w, x1 + w, y1 + w, r + w, depth, mat, bevel, [rrPath(x0, y0, x1, y1, r)]);
 }
 
-// Bake every mesh under `group` into group space and pass each vertex through fn(p, n) -> warps in place.
-// Used for the greenhouse tumblehome (sides lean inward with height).
 export function warpGroup(group, fn) {
   group.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
@@ -142,21 +129,20 @@ export function warpGroup(group, fn) {
       nor.setXYZ(i, n.x, n.y, n.z);
     }
     o.geometry = g;
-    // o now lives in group space: reset its transform relative to the group
+
     const parentInv = new THREE.Matrix4().copy(o.parent.matrixWorld).invert();
     const local = new THREE.Matrix4().multiplyMatrices(parentInv, group.matrixWorld);
     local.decompose(o.position, o.quaternion, o.scale);
   });
 }
 
-// Tumblehome: x shrinks linearly with height above y0 (x' = x * (1 - k (y - y0))), normals follow.
 export function tumblehome(y0, k) {
   return (p, n) => {
     const a = 1 - k * Math.max(0, p.y - y0);
     const active = p.y > y0 ? 1 : 0;
     const x = p.x;
     p.x = x * a;
-    // normal transform: J^-T with J = [[a, -k x], [0, 1]] (only above y0)
+
     if (active) {
       const nx = n.x / a, ny = n.y + (k * x * n.x) / a;
       n.set(nx, ny, n.z).normalize();
@@ -164,8 +150,6 @@ export function tumblehome(y0, k) {
   };
 }
 
-// Merge every static mesh under `group` into one mesh per material (keeps draw calls low).
-// Objects for which skip(o) is true are left alone together with their children.
 export function mergeStatic(group, skip = () => false) {
   group.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
@@ -204,7 +188,6 @@ export function mergeStatic(group, skip = () => false) {
 
 export { mergeGeometries };
 
-// polygon with rounded corners as a Path/Shape (2D points [a, b])
 export function roundPoly(target, pts, r) {
   const n = pts.length;
   const V = pts.map(([a, b]) => new THREE.Vector2(a, b));
@@ -227,7 +210,6 @@ export function roundPoly(target, pts, r) {
 export const polyShape = (pts, r = 0) => roundPoly(new THREE.Shape(), pts, r);
 export const polyPath = (pts, r = 0) => roundPoly(new THREE.Path(), pts, r);
 
-// extrude an arbitrary Shape: plane 'zy' (side, across x), 'xy' (front, along z) or 'xz' (plan, along y)
 export function extrudeShape(shape, depth, mat, plane = 'zy', bevel = 0.006, curveSegments = 6) {
   const geo = new THREE.ExtrudeGeometry(shape, { depth: Math.max(1e-4, depth - 2 * bevel), bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments });
   geo.translate(0, 0, -(depth - 2 * bevel) / 2);

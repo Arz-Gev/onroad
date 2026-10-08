@@ -1,11 +1,3 @@
-// Turns a downloaded car glTF/GLB (Sketchfab export) into a game-ready GLB:
-// - every node transform baked into the vertices, metres, vehicle frame (+x right, +y up, -z forward,
-//   y = 0 ground under the tyres, x = 0 centre line, z = 0 mid-wheelbase)
-// - the scene split into `body`, `wheel_FL/FR/RL/RR` (spinning parts, origin at the hub) and
-//   `caliper_FL/...` (steer with the wheel but don't spin, origin at the hub)
-// - primitives merged per material inside each group, textures resized to webp
-// Usage: node tools/prepcar.mjs <in.glb> <out.glb> <config.json>
-// The config names the wheel materials and the real wheelbase (scale reference); see tools/cars/*.json.
 import fs from 'node:fs';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -23,10 +15,9 @@ const scene = root.getDefaultScene() || root.listScenes()[0];
 const spinMats = new Set(cfg.spin), caliperMats = new Set(cfg.caliper || []);
 const matName = p => p.getMaterial()?.getName() || '';
 
-// 1. world transforms into the vertices (each mesh node becomes a direct child of the scene)
 await doc.transform(flatten());
 for (const n of scene.listChildren()) if (n.getMesh()) clearNodeTransform(n);
-// shared primitives would get transformed twice below: give every node its own copy
+
 const seen = new Set();
 for (const n of scene.listChildren()) {
   const mesh = n.getMesh(); if (!mesh) continue;
@@ -41,31 +32,28 @@ const primBounds = p => {
   return { min, max, c: min.map((m, k) => (m + max[k]) / 2) };
 };
 
-// 2. hubs from the tyre primitives (the source's own units and axes)
 const tyres = [];
 for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitives() || []) if (matName(p) === cfg.tyre) tyres.push(primBounds(p));
 if (tyres.length !== 4) throw new Error(`expected 4 '${cfg.tyre}' primitives, found ${tyres.length}`);
-const fwd = cfg.forward;                 // source axis (index) that points forward, with its sign
+const fwd = cfg.forward;
 const ax = fwd.axis, sg = fwd.sign;
-tyres.sort((a, b) => sg * (b.c[ax] - a.c[ax]));   // front pair first
+tyres.sort((a, b) => sg * (b.c[ax] - a.c[ax]));
 const front = tyres.slice(0, 2), rear = tyres.slice(2);
 const zF = (front[0].c[ax] + front[1].c[ax]) / 2, zR = (rear[0].c[ax] + rear[1].c[ax]) / 2;
 const wbUnits = Math.abs(zF - zR);
 const s = cfg.wheelbase / wbUnits;
 const ground = Math.min(...tyres.map(t => t.min[1]));
-const latAx = 3 - ax - 1;               // the remaining horizontal axis (x if forward is z, and vice versa)
+const latAx = 3 - ax - 1;
 const centre = tyres.reduce((acc, t) => acc + t.c[latAx], 0) / 4;
 const mid = (zF + zR) / 2;
-// source -> vehicle frame: forward source axis maps to -z, the lateral axis to x (right-handed with y up)
+
 const M = new THREE.Matrix4();
 if (ax === 2) {
-  // forward = +z (sign 1): rotate 180 about y -> x' = -(x - c), z' = -(z - mid)
   M.set(-sg * s, 0, 0, sg * s * centre,
         0, s, 0, -s * ground,
         0, 0, -sg * s, sg * s * mid,
         0, 0, 0, 1);
 } else {
-  // forward = +x (sign 1): x' = (z - c) * sg, z' = -(x - mid) * sg  (rotation about y)
   M.set(0, 0, sg * s, -sg * s * centre,
         0, s, 0, -s * ground,
         -sg * s, 0, 0, sg * s * mid,
@@ -73,7 +61,7 @@ if (ax === 2) {
 }
 const toCar = v => new THREE.Vector3(...v).applyMatrix4(M);
 const hubs = tyres.map(t => toCar(t.c));
-// name them: front first, then left (x < 0) before right
+
 const named = {};
 for (const h of hubs) named[(h.z < 0 ? 'F' : 'R') + (h.x < 0 ? 'L' : 'R')] = h;
 if (Object.keys(named).length !== 4) throw new Error('could not tell the four wheels apart');
@@ -81,15 +69,12 @@ if (Object.keys(named).length !== 4) throw new Error('could not tell the four wh
 const mArr = M.toArray();
 for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitives() || []) transformPrimitive(p, mArr);
 
-// 3. each tyre's real axle: the source may pose the wheels steered or cambered. The axle is the
-// direction of least spread of the tyre's vertices (a tyre is a flat ring). Every wheel is stored
-// straight, so the view can steer it from zero.
 const covEig = pts => {
   const n = pts.length / 3, m = [0, 0, 0];
   for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) m[k] += pts[i * 3 + k] / n;
   const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
   for (let i = 0; i < n; i++) for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) A[r][c] += (pts[i * 3 + r] - m[r]) * (pts[i * 3 + c] - m[c]) / n;
-  // Jacobi rotations
+
   const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   for (let sweep = 0; sweep < 50; sweep++) for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
     if (Math.abs(A[p][q]) < 1e-12) continue;
@@ -104,8 +89,7 @@ const covEig = pts => {
 const nearestHub = c => Object.entries(named).reduce((best, [k, h]) => {
   const d = Math.hypot(c[0] - h.x, c[1] - h.y, c[2] - h.z); return d < best.d ? { k, d } : best;
 }, { k: null, d: Infinity });
-// A tyre can be asymmetric (sidewall detail on one side) and tilt that fit by a few degrees, which makes
-// the wheel wobble as it spins: `cfg.axle` names a flat part (brake disc face) to take the axle from.
+
 const axleRef = {};
 if (cfg.axle) {
   const pts = {};
@@ -116,9 +100,9 @@ if (cfg.axle) {
   }
   for (const [k, a] of Object.entries(pts)) axleRef[k] = covEig(a).axle;
 }
-const pose = {};    // wheel key -> quaternion that puts the straight wheel back in its posed camber / toe
-const size = {};    // wheel key -> { r, w } of the straight tyre
-const local = {};   // wheel key -> matrix from car frame to the straight wheel frame (origin at the hub)
+const pose = {};
+const size = {};
+const local = {};
 for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitives() || []) {
   if (matName(p) !== cfg.tyre) continue;
   const { k } = nearestHub(primBounds(p).c);
@@ -139,7 +123,6 @@ for (const n of scene.listChildren()) for (const p of n.getMesh()?.listPrimitive
 }
 const tyreR = Math.max(...Object.values(size).map(t => t.r)), tyreW = Math.max(...Object.values(size).map(t => t.w));
 
-// 4. regroup: body, wheel_XX, caliper_XX
 const group = name => { const g = doc.createNode(name); scene.addChild(g); return g; };
 const groups = { body: group('body') };
 for (const k of ['FL', 'FR', 'RL', 'RR']) {
@@ -166,7 +149,7 @@ for (const n of [...scene.listChildren()]) {
   }
   n.dispose();
 }
-// 5. clean-up and merge per material inside each group
+
 await doc.transform(
   prune(),
   dedup(),
@@ -175,7 +158,7 @@ await doc.transform(
   prune(),
   textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [cfg.maxTexture || 2048, cfg.maxTexture || 2048] }),
 );
-// drop the empty intermediate nodes join() leaves behind
+
 for (const g of Object.values(groups)) for (const c of g.listChildren()) if (!c.getMesh() && !c.listChildren().length) c.dispose();
 
 const b = getBounds(scene);

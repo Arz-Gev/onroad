@@ -5,13 +5,8 @@ import {
   plate, frame, rrPath, polyShape, polyPath, warpGroup, tumblehome,
 } from './geom.js';
 
-// Exterior of the Defender 110 station wagon (reference.webp): lower body with squared arches and
-// black flares, raised-centre bonnet with louvred wing vents, grille + round lamps in square bezels,
-// winch bumper, tumblehome greenhouse with alpine windows, full-length expedition rack with a light
-// bar, snorkel on the right A-pillar, rear door with the spare, vertical rear lamp clusters.
-
 const AH = 0.56, AT = 0.34, ATOP = D.ARCH_TOP;
-// squared Defender arch, traversed from the rear base to the front base (z decreasing)
+
 const arch = (zc, yRear, yFront, hb = AH) => [
   [zc + hb, yRear], [zc + hb - 0.035, ATOP - 0.17], [zc + AT, ATOP], [zc - AT, ATOP], [zc - hb + 0.035, ATOP - 0.17], [zc - hb, yFront],
 ];
@@ -26,13 +21,11 @@ export function buildExterior(mats, body) {
   const sides = [-1, 1];
   const out = { headLens: [], anchors: {} };
 
-  // ------------------------------------------------------------------ lower body
-  // engine bay / wings: solid block across the full width with the front arch cut out
   add(extrudeProfile([
     [FRONT, 0.80], [FRONT, 1.335], [FRONT + 0.04, 1.378], [SCREEN - 0.012, 1.383], [SCREEN - 0.012, SILL],
     ...arch(ARCH_F, SILL, 0.80), [FRONT + 0.02, 0.80],
   ], 2 * W, mats.paint, 0.022));
-  // cabin + rear body sides (thin skins: the cabin is hollow)
+
   for (const s of sides) {
     const p = extrudeProfile([
       [SCREEN - 0.012, SILL], [SCREEN - 0.012, WAIST], [REAR - 0.012, WAIST], [REAR, WAIST - 0.012], [REAR, 0.70], [REAR - 0.03, 0.68],
@@ -41,21 +34,19 @@ export function buildExterior(mats, body) {
     p.position.x = s * (W - 0.02);
     add(p);
   }
-  // rear lower face, floor, bulkhead
+
   add(span(-W, W, 0.70, WAIST, REAR - 0.04, REAR, mats.paint, 0.012));
-  // floor (kept clear of the rear wheel wells)
+
   for (const [x, z0, z1] of [[W - 0.03, SCREEN, ARCH_R - 0.6], [0.55, ARCH_R - 0.6, ARCH_R + 0.6], [W - 0.03, ARCH_R + 0.6, REAR - 0.03]]) {
     add(span(-x, x, SILL, D.FLOOR - 0.012, z0, z1, mats.chassis));
     add(span(-x + 0.01, x - 0.01, D.FLOOR - 0.012, D.FLOOR, z0, z1, mats.carpet));
   }
   add(span(-W + 0.03, W - 0.03, D.FLOOR, WAIST - 0.01, SCREEN - 0.012, SCREEN + 0.02, mats.cabinPaint));
-  // waist capping: the greenhouse sits inboard of the lower body, the ledge reads as the belt line
+
   for (const s of sides) add(span(s * (WG - 0.01), s * (W + 0.004), WAIST - 0.004, WAIST + 0.01, SCREEN + 0.01, REAR - 0.006, mats.paint, 0.005));
   add(span(-W - 0.002, W + 0.002, WAIST - 0.004, WAIST + 0.012, REAR - 0.05, REAR + 0.006, mats.paint, 0.006));
 
-  // inner wheel wells (black), so the arches don't look into a hollow body
   const well = (zc, hb, yRear, yFront, x0, x1) => {
-    // liner just inside the opening: it hides the painted cut faces of the body around the arch
     const outer = arch(zc, yRear, yFront, hb).map(([z, y]) => [z - Math.sign(z - zc) * 0.004, y === yRear || y === yFront ? y : y - 0.004]);
     const inner = outer.map(([z, y]) => [z - Math.sign(z - zc) * 0.02, y === yRear || y === yFront ? y : y - 0.02]);
     for (const s of sides) {
@@ -70,20 +61,19 @@ export function buildExterior(mats, body) {
   well(ARCH_F, AH, SILL, 0.80, 0.47, W + 0.002);
   well(ARCH_R, 0.57, 0.68, SILL, 0.56, W + 0.002);
 
-  // ------------------------------------------------------------------ bonnet + wing tops
   const BON_Y = 1.383;
   add(span(-0.645, 0.645, BON_Y - 0.004, BON_Y + 0.014, FRONT + 0.035, SCREEN - 0.045, mats.paint, 0.007));
-  // raised centre section: trapezoid, wider at the screen
+
   {
     const pts = [[-0.50, SCREEN - 0.075], [0.50, SCREEN - 0.075], [0.37, FRONT + 0.085], [-0.37, FRONT + 0.085]];
     const raised = extrudePlan(pts, 0.036, mats.paint, 0.018);
     raised.position.y = BON_Y + 0.006;
     add(raised);
   }
-  // bonnet shut lines
+
   for (const s of sides) add(span(s * 0.6465 - 0.003, s * 0.6465 + 0.003, BON_Y - 0.006, BON_Y + 0.008, FRONT + 0.03, SCREEN - 0.04, mats.seal));
   add(span(-0.647, 0.647, BON_Y - 0.006, BON_Y + 0.008, SCREEN - 0.046, SCREEN - 0.04, mats.seal));
-  // louvred wing vents (front) and small bonnet vents (by the screen)
+
   const vent = (x0, x1, z0, z1, n) => {
     add(span(x0, x1, BON_Y - 0.003, BON_Y + 0.006, z0, z1, mats.black, 0.003));
     for (let k = 0; k < n; k++) {
@@ -96,29 +86,27 @@ export function buildExterior(mats, body) {
     vent(s * 0.548, s * 0.626, -1.02, -0.90, 3);
   }
 
-  // ------------------------------------------------------------------ front face
   const FZ = FRONT;
-  // grille: black frame, dark backing, horizontal slats
+
   add(frame(-0.425, 0.85, 0.425, 1.185, 0.02, 0.04, 0.03, mats.black)).position.z = FZ - 0.012;
   add(span(-0.43, 0.43, 0.845, 1.19, FZ - 0.004, FZ + 0.01, mats.seal));
   for (let k = 0; k < 6; k++) add(span(-0.418, 0.418, 0.873 + k * 0.054, 0.897 + k * 0.054, FZ - 0.026, FZ - 0.004, mats.black, 0.004));
-  add(span(-0.06, 0.06, 1.03, 1.06, FZ - 0.03, FZ - 0.02, mats.zinc, 0.006)); // badge
+  add(span(-0.06, 0.06, 1.03, 1.06, FZ - 0.03, FZ - 0.02, mats.zinc, 0.006));
   for (const s of sides) {
-    // square headlamp bezel
     const bz = plate(-0.19, -0.175, 0.19, 0.175, 0.035, 0.03, mats.black);
     bz.position.set(s * 0.675, 1.005, FZ - 0.012);
     add(bz);
     const hx = s * 0.635, hy = 1.005;
     const ring = add(mesh(new THREE.TorusGeometry(0.094, 0.013, 10, 32), mats.chrome, hx, hy, FZ - 0.034));
     ring.castShadow = false;
-    // domed lens
+
     const lensGeo = new THREE.SphereGeometry(0.2, 32, 6, 0, Math.PI * 2, 0, 0.455);
     lensGeo.rotateX(-Math.PI / 2);
     lensGeo.translate(0, 0, 0.2 * Math.cos(0.455));
     const lens = add(mesh(lensGeo, mats.headLens, hx, hy, FZ - 0.03));
     lens.castShadow = false;
     out.headLens.push(lens);
-    // side light (clear) above the indicator (amber), outboard of the headlamp
+
     for (const [y, m, r] of [[1.10, mats.sideLens, 0.026], [0.905, mats.amber, 0.03]]) {
       add(mesh(new THREE.TorusGeometry(r + 0.004, 0.005, 6, 20), mats.chrome, s * 0.795, y, FZ - 0.03)).castShadow = false;
       const l = add(mesh(new THREE.CylinderGeometry(r, r, 0.02, 20).rotateX(Math.PI / 2), m, s * 0.795, y, FZ - 0.028));
@@ -126,22 +114,21 @@ export function buildExterior(mats, body) {
     }
   }
 
-  // ------------------------------------------------------------------ front winch bumper
   {
     const bp = extrudePlan([[-0.985, FZ + 0.05], [-0.985, FZ - 0.07], [-0.86, FZ - 0.225], [0.86, FZ - 0.225], [0.985, FZ - 0.07], [0.985, FZ + 0.05]], 0.23, mats.blackMetal, 0.016);
     bp.position.y = 0.555;
     add(bp);
-    // top plate step + recessed winch cradle
+
     add(span(-0.30, 0.30, 0.77, 0.79, FZ - 0.20, FZ - 0.02, mats.seal));
     const drum = add(mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.46, 20).rotateZ(Math.PI / 2), mats.chassis, 0, 0.80, FZ - 0.11));
     for (const s of sides) add(mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 20).rotateZ(Math.PI / 2), mats.blackMetal, s * 0.255, 0.80, FZ - 0.11));
     drum.castShadow = true;
-    // fairlead (alloy hawse) with the slot
+
     add(rbox(0.26, 0.09, 0.035, 0.012, mats.zinc, 0, 0.665, FZ - 0.238));
     add(rbox(0.17, 0.022, 0.02, 0.008, mats.seal, 0, 0.665, FZ - 0.254));
-    // hoop over the winch
+
     add(pipe([[-0.43, 0.785, FZ - 0.17], [-0.35, 0.91, FZ - 0.19], [0.35, 0.91, FZ - 0.19], [0.43, 0.785, FZ - 0.17]], 0.024, mats.blackMetal, 0.07, 10));
-    // D-ring shackles on tabs
+
     for (const s of sides) {
       const x = s * 0.445;
       add(rbox(0.032, 0.09, 0.07, 0.008, mats.blackMetal, x, 0.56, FZ - 0.21));
@@ -150,11 +137,10 @@ export function buildExterior(mats, body) {
       add(bar([x - 0.042, 0.535, FZ - 0.238], [x + 0.042, 0.535, FZ - 0.238], 0.009, mats.zinc, 8));
       add(mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 8).rotateZ(Math.PI / 2), mats.zinc, x + 0.05, 0.535, FZ - 0.238));
     }
-    // small lamps in the bumper ends
+
     for (const s of sides) add(rbox(0.09, 0.03, 0.02, 0.008, mats.amber, s * 0.86, 0.73, FZ - 0.205)).castShadow = false;
   }
 
-  // ------------------------------------------------------------------ flares, sliders, mud flaps
   const flare = (zc, hb, yRear, yFront, x) => {
     const inner = arch(zc, yRear, yFront, hb);
     const outer = archOuter(zc, yRear, yFront, hb);
@@ -162,7 +148,7 @@ export function buildExterior(mats, body) {
       const f = extrudeProfile([...outer, ...inner.slice().reverse()], 0.085, mats.black, 0.016);
       f.position.x = s * x;
       add(f);
-      // lip
+
       const lip = extrudeProfile([...archOuter(zc, yRear, yFront, hb, 0.035), ...inner.slice().reverse()], 0.03, mats.black, 0.008);
       lip.position.x = s * (x + 0.045);
       add(lip);
@@ -174,40 +160,38 @@ export function buildExterior(mats, body) {
     const x = s * 0.925, z0 = ARCH_F + 0.64, z1 = ARCH_R - 0.64;
     add(pipe([[s * 0.86, 0.545, z0 - 0.05], [x, 0.545, z0 + 0.06], [x, 0.545, z1 - 0.06], [s * 0.86, 0.545, z1 + 0.05]], 0.032, mats.blackMetal, 0.08, 10));
     add(span(s * 0.82, s * 0.94, 0.57, 0.59, z0 + 0.08, z1 - 0.08, mats.blackMetal, 0.008));
-    for (let k = 0; k < 7; k++) add(span(s * 0.83, s * 0.93, 0.589, 0.594, z0 + 0.14 + k * 0.2, z0 + 0.2 + k * 0.2, mats.black)); // grip strips
+    for (let k = 0; k < 7; k++) add(span(s * 0.83, s * 0.93, 0.589, 0.594, z0 + 0.14 + k * 0.2, z0 + 0.2 + k * 0.2, mats.black));
     for (const z of [z0 + 0.2, 0.0, z1 - 0.2]) add(bar([x, 0.545, z], [s * 0.47, 0.56, z], 0.022, mats.blackMetal, 8));
-    // rear mud flaps
+
     const mf = add(rbox(0.25, 0.34, 0.012, 0.01, mats.rubber, s * 0.79, 0.45, ARCH_R + 0.62));
     mf.castShadow = true;
   }
 
-  // ------------------------------------------------------------------ body-side details
   const seam = (x, y0, y1, z0, z1) => add(span(x - 0.0015, x + 0.0025 * Math.sign(x), y0, y1, z0, z1, mats.seal));
   for (const s of sides) {
     const x = s * (W + 0.0005);
-    seam(x, SILL + 0.03, WAIST - 0.01, -0.688, -0.682);               // front door front edge
-    seam(x, SILL + 0.03, WAIST - 0.01, 0.227, 0.233);                 // B pillar
-    seam(x, ATOP + 0.115, WAIST - 0.01, 0.972, 0.978);                // rear door rear edge
-    seam(x, 0.692, 0.698, -0.688, 0.978);                             // door bottoms
-    // hinges: front doors on the A pillar, rear doors on the B pillar
+    seam(x, SILL + 0.03, WAIST - 0.01, -0.688, -0.682);
+    seam(x, SILL + 0.03, WAIST - 0.01, 0.227, 0.233);
+    seam(x, ATOP + 0.115, WAIST - 0.01, 0.972, 0.978);
+    seam(x, 0.692, 0.698, -0.688, 0.978);
+
     for (const z of [-0.705, 0.245]) for (const y of [0.86, 1.22]) {
       add(rbox(0.026, 0.075, 0.06, 0.008, mats.paint, s * (W + 0.012), y, z));
       add(mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.085, 8), mats.paint, s * (W + 0.026), y, z));
     }
-    // handles + lock
+
     for (const z of [0.115, 0.86]) {
       add(rbox(0.022, 0.04, 0.15, 0.01, mats.black, s * (W + 0.011), 1.165, z));
       add(rbox(0.012, 0.022, 0.11, 0.008, mats.seal, s * (W + 0.02), 1.158, z));
     }
     add(mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.02, 10).rotateZ(Math.PI / 2), mats.zinc, s * (W + 0.008), 1.12, 0.17));
-    // side repeater on the wing
+
     add(rbox(0.012, 0.026, 0.065, 0.006, mats.amber, s * (W + 0.006), 1.22, -1.62)).castShadow = false;
   }
-  // fuel filler flap (right rear quarter)
+
   add(rbox(0.02, 0.15, 0.135, 0.02, mats.black, W + 0.008, 1.12, 2.0));
   add(mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.014, 18).rotateZ(Math.PI / 2), mats.blackMetal, W + 0.02, 1.12, 2.0));
 
-  // ------------------------------------------------------------------ greenhouse (tumblehome)
   const gh = new THREE.Group();
   body.add(gh);
   const g = o => add(o, gh);
@@ -219,7 +203,6 @@ export function buildExterior(mats, body) {
     [[1.135, winY0], [2.105, winY0], [2.105, winY1], [1.135, winY1]],
   ];
   const grow = (poly, d) => {
-    // grow a convex quad (z, y) by d along each edge normal
     const n = poly.length, outP = [];
     const cz = poly.reduce((a, p) => a + p[0], 0) / n, cy = poly.reduce((a, p) => a + p[1], 0) / n;
     for (let i = 0; i < n; i++) {
@@ -234,14 +217,12 @@ export function buildExterior(mats, body) {
     return outP;
   };
   for (const s of sides) {
-    // side panel with the window openings
     const panel = extrudeShape(
       (() => { const sh = polyShape([[pz(WAIST), WAIST], [REAR, WAIST], [REAR, EAVE], [pz(EAVE), EAVE]], 0.0); for (const w of windows) sh.holes.push(polyPath(w, 0.035)); return sh; })(),
       0.035, mats.paint, 'zy', 0.008);
     panel.position.x = s * (WG - 0.0175);
     g(panel);
     for (const [wi, w] of windows.entries()) {
-      // rubber seal + glass (front door glass lighter so the driver can see out)
       const seal = extrudeShape((() => { const sh = polyShape(grow(w, 0.022), 0.05); sh.holes.push(polyPath(w, 0.035)); return sh; })(), 0.014, mats.seal, 'zy', 0.004);
       seal.position.x = s * (WG + 0.002);
       g(seal);
@@ -250,17 +231,17 @@ export function buildExterior(mats, body) {
       gl.castShadow = false;
       g(gl);
     }
-    // slider bar in the rear door glass, split bar in the rear side window
+
     for (const z of [0.615, 1.62]) g(span(s * (WG - 0.016), s * (WG - 0.004), winY0, winY1, z - 0.012, z + 0.012, mats.seal));
-    // door shut lines in the upper body
+
     const x = s * (WG + 0.0005);
     g(span(x - 0.0015, x + 0.002 * s, WAIST, EAVE - 0.015, 0.227, 0.233, mats.seal));
     g(span(x - 0.0015, x + 0.002 * s, WAIST, EAVE - 0.015, 0.972, 0.978, mats.seal));
     g(span(x - 0.0015, x + 0.002 * s, EAVE - 0.018, EAVE - 0.012, pz(EAVE) + 0.02, 0.978, mats.seal));
-    // gutter (drip rail)
+
     g(span(s * (WG - 0.004), s * (WG + 0.018), EAVE - 0.004, EAVE + 0.014, pz(EAVE) - 0.03, REAR - 0.002, mats.paint, 0.005));
   }
-  // roof: chamfered edges carry the alpine windows
+
   const CH = 0.085;
   {
     const sec = [[-WG, EAVE - 0.012], [WG, EAVE - 0.012], [WG, EAVE], [WG - CH, ROOF], [-(WG - CH), ROOF], [-WG, EAVE]];
@@ -268,9 +249,9 @@ export function buildExterior(mats, body) {
     const roof = extrudeFront(sec, z1 - z0, mats.paint, 0.012);
     roof.position.z = (z0 + z1) / 2;
     g(roof);
-    // longitudinal stiffening ribs
+
     for (const x of [-0.42, 0, 0.42]) g(rbox(0.05, 0.016, z1 - z0 - 0.25, 0.007, mats.paint, x, ROOF + 0.004, (z0 + z1) / 2 + 0.06));
-    // alpine windows on the chamfers
+
     const nx = (ROOF - EAVE) / Math.hypot(CH, ROOF - EAVE), ny = CH / Math.hypot(CH, ROOF - EAVE);
     for (const s of sides) {
       for (const [za, zb] of [[-0.36, 0.10], [0.36, 0.86], [1.18, 2.08]]) {
@@ -287,7 +268,7 @@ export function buildExterior(mats, body) {
       }
     }
   }
-  // rear face of the greenhouse: door window + corner windows
+
   {
     const sh = polyShape([[-WG, WAIST], [WG, WAIST], [WG, EAVE], [WG - CH, ROOF - 0.002], [-(WG - CH), ROOF - 0.002], [-WG, EAVE]], 0);
     const holes = [[-0.795, 1.43, -0.585, 1.83, 0.045], [0.585, 1.43, 0.795, 1.83, 0.045], [-0.43, 1.43, 0.43, 1.87, 0.035]];
@@ -305,14 +286,14 @@ export function buildExterior(mats, body) {
       g(gl);
       void hi;
     }
-    // rear door outline
+
     const sz = REAR + 0.0012;
     for (const s of sides) g(span(s * 0.52 - 0.003, s * 0.52 + 0.003, WAIST, 1.935, sz - 0.002, sz + 0.002, mats.seal));
     g(span(-0.523, 0.523, 1.932, 1.938, sz - 0.002, sz + 0.002, mats.seal));
-    // third brake light
+
     out.cbl = g(rbox(0.26, 0.032, 0.03, 0.01, mats.brake, 0, 1.955, REAR + 0.006));
   }
-  // windscreen: raked frame, single pane, seal; lives in the greenhouse so it follows the tumblehome
+
   {
     const ws = new THREE.Group();
     ws.position.set(0, WAIST, SCREEN);
@@ -333,12 +314,11 @@ export function buildExterior(mats, body) {
     gl.position.z = -0.012;
     gl.castShadow = false;
     add(gl, ws);
-    // windscreen hinges at the base and the header lip
+
     for (const s of sides) add(rbox(0.07, 0.03, 0.03, 0.008, mats.paint, s * 0.45, 0.015, -0.03), ws);
   }
   warpGroup(gh, tumblehome(WAIST, D.TUMBLE));
 
-  // wipers parked along the base of the screen
   {
     const t = Math.atan2(D.RAKE, EAVE - WAIST);
     const onGlass = (x, h) => [x, WAIST + 0.05 + h * Math.cos(t), SCREEN - 0.034 + (0.05 + h) * Math.sin(t)];
@@ -349,9 +329,6 @@ export function buildExterior(mats, body) {
     }
   }
 
-  // ------------------------------------------------------------------ mirrors
-  // convex glass (R 1 m, like real door mirrors): its normals spread, so the environment reflection
-  // shows sky above and ground below instead of one flat grey tone
   const mirrorGlass = new THREE.PlaneGeometry(0.135, 0.205, 6, 8);
   {
     const p = mirrorGlass.attributes.position, R = 1.0, r2max = 0.0675 ** 2 + 0.1025 ** 2;
@@ -364,7 +341,6 @@ export function buildExterior(mats, body) {
     add(mesh(mirrorGlass, mats.mirror, s * (W + 0.19), 1.595, -0.585)).castShadow = false;
   }
 
-  // ------------------------------------------------------------------ snorkel (right A-pillar)
   {
     const x0 = W + 0.03;
     add(rbox(0.07, 0.34, 0.25, 0.03, mats.black, x0, 1.17, -0.85));
@@ -378,9 +354,7 @@ export function buildExterior(mats, body) {
     for (const y of [1.6, 1.86]) add(bar([tw(y), y, pz(y) - 0.035], [WG * D.tumble(y) - 0.01, y, pz(y) + 0.01], 0.01, mats.black, 6));
   }
 
-  // ------------------------------------------------------------------ rear end
   {
-    // vertical lamp clusters: high amber indicator, then amber / tail / brake, black bezels
       for (const s of sides) {
       add(rbox(0.1, 0.1, 0.02, 0.012, mats.black, s * 0.828, 1.14, REAR + 0.008));
       add(rbox(0.075, 0.075, 0.016, 0.01, mats.amber, s * 0.828, 1.14, REAR + 0.016)).castShadow = false;
@@ -388,17 +362,17 @@ export function buildExterior(mats, body) {
       const cx = [0.835, 0.75, 0.665];
       const cm = [mats.amber, mats.tail, mats.brake];
       for (let k = 0; k < 3; k++) add(rbox(0.074, 0.092, 0.016, 0.008, cm[k], s * cx[k], 0.835, REAR + 0.017)).castShadow = false;
-      // reflector
+
       add(rbox(0.06, 0.03, 0.01, 0.006, mats.reflector, s * 0.69, 0.98, REAR + 0.006));
     }
-    // rear door: lower outline, hinges (right) and handle
+
     for (const s of sides) add(span(s * 0.52 - 0.003, s * 0.52 + 0.003, 0.72, WAIST, REAR - 0.001, REAR + 0.003, mats.seal));
     add(span(-0.523, 0.523, 0.717, 0.723, REAR - 0.001, REAR + 0.003, mats.seal));
     for (const y of [0.92, 1.24]) add(rbox(0.06, 0.08, 0.022, 0.008, mats.paint, 0.525, y, REAR + 0.01));
     add(rbox(0.13, 0.035, 0.022, 0.01, mats.black, -0.35, 1.12, REAR + 0.01));
-    // spare wheel carrier plate on the door
+
     add(rbox(0.36, 0.36, 0.06, 0.02, mats.blackMetal, 0, 1.17, REAR + 0.04));
-    // bumper with lamps, D-rings, receiver
+
     const bp = extrudePlan([[-0.955, REAR - 0.02], [-0.955, REAR + 0.11], [-0.9, REAR + 0.165], [0.9, REAR + 0.165], [0.955, REAR + 0.11], [0.955, REAR - 0.02]], 0.19, mats.blackMetal, 0.014);
     bp.position.y = 0.535;
     add(bp);
@@ -414,10 +388,9 @@ export function buildExterior(mats, body) {
     }
     add(span(-0.06, 0.06, 0.55, 0.62, REAR + 0.12, REAR + 0.24, mats.blackMetal, 0.008));
     add(span(-0.035, 0.035, 0.565, 0.605, REAR + 0.238, REAR + 0.242, mats.seal));
-    add(span(-0.16, 0.16, 0.70, 0.725, REAR + 0.02, REAR + 0.15, mats.black, 0.005)); // step tread
+    add(span(-0.16, 0.16, 0.70, 0.725, REAR + 0.02, REAR + 0.15, mats.black, 0.005));
   }
 
-  // ------------------------------------------------------------------ expedition roof rack + light bar
   const rack = new THREE.Group();
   body.add(rack);
   const rk = o => add(o, rack);
@@ -426,9 +399,9 @@ export function buildExterior(mats, body) {
   rk(pipe([[-RX - 0.01, RY1, RZ0 + 0.1], [RX + 0.01, RY1, RZ0 + 0.1], [RX + 0.01, RY1, RZ1], [-RX - 0.01, RY1, RZ1]], 0.019, mats.blackMetal, 0.13, 8, true));
   const posts = [RZ0 + 0.1, 0.05, 0.5, 0.95, 1.4, 1.85, RZ1];
   for (const s of sides) {
-    rk(bar([s * RX, RY0 + 0.1, RZ0 + 0.12], [s * RX, RY0 + 0.1, RZ1], 0.014, mats.blackMetal, 8)); // middle rail
+    rk(bar([s * RX, RY0 + 0.1, RZ0 + 0.12], [s * RX, RY0 + 0.1, RZ1], 0.014, mats.blackMetal, 8));
     for (const z of posts) rk(bar([s * RX, RY0, z], [s * (RX + 0.01), RY1, z], 0.016, mats.blackMetal, 8));
-    // gutter mounts
+
     for (const z of [-0.32, 0.35, 1.0, 1.62, 2.18]) {
       const xg = WG * D.tumble(EAVE) + 0.006;
       rk(rbox(0.05, 0.03, 0.07, 0.008, mats.blackMetal, s * xg, EAVE + 0.02, z));
@@ -437,7 +410,7 @@ export function buildExterior(mats, body) {
   }
   for (let k = 0; k <= 4; k++) { const z = RZ0 + 0.06 + (RZ1 - RZ0 - 0.12) * k / 4; rk(bar([-RX, RY0, z], [RX, RY0, z], 0.016, mats.blackMetal, 8)); }
   for (const x of [-0.4, 0.4]) rk(bar([x, RY0 + 0.018, RZ0 + 0.05], [x, RY0 + 0.018, RZ1 - 0.05], 0.012, mats.blackMetal, 6));
-  // light bar across the front: four square lamps and the amber beacon in the middle
+
   const LBZ = RZ0 - 0.04, LBY = RY0 + 0.05;
   rk(bar([-0.74, LBY - 0.035, LBZ + 0.03], [0.74, LBY - 0.035, LBZ + 0.03], 0.02, mats.blackMetal, 8));
   for (const s of sides) rk(bar([s * 0.74, LBY - 0.035, LBZ + 0.03], [s * RX, RY0, RZ0 + 0.06], 0.018, mats.blackMetal, 8));
@@ -454,24 +427,23 @@ export function buildExterior(mats, body) {
   const bc = rk(mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.075, 18), mats.beacon, 0, LBY + 0.04, LBZ + 0.02));
   bc.castShadow = false;
   rk(mesh(new THREE.SphereGeometry(0.045, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mats.beacon, 0, LBY + 0.077, LBZ + 0.02)).castShadow = false;
-  // rear work lamps
+
   for (const s of sides) {
     rk(rbox(0.11, 0.08, 0.07, 0.012, mats.black, s * 0.6, RY1 + 0.03, RZ1 + 0.02));
     rk(rbox(0.09, 0.06, 0.012, 0.005, mats.workLens, s * 0.6, RY1 + 0.03, RZ1 + 0.058)).castShadow = false;
   }
   out.rack = rack;
 
-  // ------------------------------------------------------------------ chassis + underbody
   for (const s of sides) add(span(s * 0.43 - 0.05, s * 0.43 + 0.05, 0.46, 0.62, FRONT + 0.06, REAR + 0.02, mats.chassis));
   for (const z of [-1.9, -0.6, 0.62, 1.95]) add(span(-0.43, 0.43, 0.49, 0.6, z - 0.045, z + 0.045, mats.chassis));
-  add(span(-0.3, 0.3, 0.44, 0.74, -0.78, 0.08, mats.chassis, 0.05));     // gearbox
-  add(span(-0.16, 0.3, 0.42, 0.64, 0.08, 0.5, mats.chassis, 0.04));      // transfer case
-  add(span(-0.31, 0.31, 0.52, 1.16, -1.9, -0.8, mats.chassis, 0.06));    // engine block
-  add(span(-0.22, 0.22, 0.42, 0.56, -1.75, -0.95, mats.chassis, 0.03)); // sump
-  add(span(0.36, 0.8, 0.48, 0.64, 1.62, 2.2, mats.chassis, 0.03));       // fuel tank
-  add(bar([-0.5, 0.48, -0.75], [-0.54, 0.46, 2.36], 0.03, mats.steel));  // exhaust
+  add(span(-0.3, 0.3, 0.44, 0.74, -0.78, 0.08, mats.chassis, 0.05));
+  add(span(-0.16, 0.3, 0.42, 0.64, 0.08, 0.5, mats.chassis, 0.04));
+  add(span(-0.31, 0.31, 0.52, 1.16, -1.9, -0.8, mats.chassis, 0.06));
+  add(span(-0.22, 0.22, 0.42, 0.56, -1.75, -0.95, mats.chassis, 0.03));
+  add(span(0.36, 0.8, 0.48, 0.64, 1.62, 2.2, mats.chassis, 0.03));
+  add(bar([-0.5, 0.48, -0.75], [-0.54, 0.46, 2.36], 0.03, mats.steel));
   add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.42, 14).rotateX(Math.PI / 2), mats.steel, -0.52, 0.47, 1.1));
-  // radiator behind the grille
+
   add(span(-0.4, 0.4, 0.8, 1.2, FRONT + 0.06, FRONT + 0.12, mats.chassis));
 
   out.anchors = {

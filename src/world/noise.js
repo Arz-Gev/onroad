@@ -1,5 +1,3 @@
-// Small deterministic noise helpers (2D simplex + fbm + seeded RNG).
-
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -38,7 +36,7 @@ export function makeSimplex2D(seed = 1) {
     if (t1 > 0) { const g = GRAD[perm[ii + i1 + perm[jj + j1]] & 7]; t1 *= t1; n += t1 * t1 * (g[0] * x1 + g[1] * y1); }
     let t2 = 0.5 - x2 * x2 - y2 * y2;
     if (t2 > 0) { const g = GRAD[perm[ii + 1 + perm[jj + 1]] & 7]; t2 *= t2; n += t2 * t2 * (g[0] * x2 + g[1] * y2); }
-    return 70 * n; // ~[-1, 1]
+    return 70 * n;
   };
 }
 

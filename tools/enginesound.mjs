@@ -1,6 +1,3 @@
-// Offline render of the engine worklet to WAV, so the sound can be checked without a browser.
-//   node tools/enginesound.mjs [out.wav] [worklet path]
-// Plays a fixed script (idle, blips, lugging, cruise, overrun) and prints per-segment level stats.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +13,6 @@ globalThis.registerProcessor = (_, cls) => { Proc = cls; };
 await import(pathToFileURL(workletPath).href + '?t=' + Date.now());
 const p = new Proc();
 
-// [seconds, rpm, load, throttle, label]
 const SCRIPT = [
   [3.0, 720, 0.12, 0, 'idle'],
   [0.6, 2200, 0.6, 0.6, 'blip up'],
@@ -42,14 +38,14 @@ for (const [secs, rpm, load, thr, label] of SCRIPT) {
     p.process([], [[ch]], params);
     buf.set(ch, i); i += ch.length;
   }
-  // stats over the last second (after the rpm glide)
+
   let sum = 0, peak = 0;
   const a = Math.max(start, i - SR);
   for (let j = a; j < i; j++) { sum += buf[j] * buf[j]; peak = Math.max(peak, Math.abs(buf[j])); }
   const rms = Math.sqrt(sum / (i - a));
   stats.push(`${label.padEnd(18)} rms ${(20 * Math.log10(rms + 1e-9)).toFixed(1)} dBFS  peak ${(20 * Math.log10(peak + 1e-9)).toFixed(1)}  crest ${(peak / rms).toFixed(1)}`);
 }
-// 16-bit WAV
+
 const data = Buffer.alloc(44 + N * 2);
 data.write('RIFF', 0); data.writeUInt32LE(36 + N * 2, 4); data.write('WAVE', 8);
 data.write('fmt ', 12); data.writeUInt32LE(16, 16); data.writeUInt16LE(1, 20); data.writeUInt16LE(1, 22);

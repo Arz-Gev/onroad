@@ -1,5 +1,3 @@
-// Loads a track converted by tools/kn5/convert-track.mjs: public/tracks/<id>/{track.json, track.glb, textures/*.dds}.
-// Materials are rebuilt from the AC shader info in each material's extras (the GLB itself has none).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DDSLoader } from 'three/examples/jsm/loaders/DDSLoader.js';
@@ -19,7 +17,7 @@ export async function loadAcTrack(id, { base = 'tracks/', renderer, onProgress }
     const key = `${path}|${color}`;
     if (!cache.has(key)) {
       const t = path.endsWith('.png') ? img.load(`${root}${path}`) : dds.load(`${root}${path}`);
-      t.flipY = false;        // AC UVs are top-left origin, as DDS rows are stored
+      t.flipY = false;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       t.anisotropy = Math.min(8, aniso);
@@ -31,7 +29,7 @@ export async function loadAcTrack(id, { base = 'tracks/', renderer, onProgress }
   const mats = new Map();
   function material(src) {
     if (mats.has(src)) return mats.get(src);
-    const x = src.userData;                     // GLTFLoader puts extras in userData
+    const x = src.userData;
     const p = x.props || {};
     const T = x.textures || {};
     const m = new THREE.MeshStandardMaterial({ name: src.name, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
@@ -68,7 +66,6 @@ export async function loadAcTrack(id, { base = 'tracks/', renderer, onProgress }
   return { info, scene, physical };
 }
 
-// AC ksMultilayer: the base diffuse is multiplied by four tiled detail textures blended by txMask's RGBA.
 function addMultilayer(m, T, p, tex) {
   if (!T.txMask) return;
   const slots = ['R', 'G', 'B', 'A'];

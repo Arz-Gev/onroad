@@ -2,20 +2,6 @@ import { capsHTML } from './input.js';
 import { MESSAGES } from './messages.js';
 import { theme, rgba } from './theme.js';
 
-// In-game HUD. The rules it follows are in docs/UI.md; read them before adding anything here.
-//
-// Layout: menu button + key hints (top left), telemetry / suspension panel / fps (optional), and the
-// dash (bottom right): the ticker line over the instrument cluster.
-// - The cluster shows STATE: speed, gear, rpm, a car glyph (wheel slip, diff locks, pedals), a row of
-//   indicator lamps (engine, handbrake, TC, ABS, lights, hazards, light bar, sound) and an info row
-//   (gearbox, driveline, tyres, surface). A field the player changed flashes once.
-// - The ticker shows EVENTS (hud.notify(id), texts in messages.js) and standing tips: a short stack
-//   over the cluster, empty by default; a new line slides in at the bottom and pushes the others up,
-//   expired lines fade out upwards.
-//
-// Cost rules: no layout reads per frame; DOM text/classes are written only when the value changes;
-// bars move with transforms.
-
 const SPEED_UNITS = { kmh: { k: 3.6, label: 'km/h' }, mph: { k: 2.236936, label: 'mph' } };
 export const fmtPressure = (psi, unit) => unit === 'bar' ? `${(psi * 0.0689476).toFixed(2)} bar` : `${psi.toFixed(0)} psi`;
 export const speedUnit = u => SPEED_UNITS[u] || SPEED_UNITS.kmh;
@@ -25,7 +11,6 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const LIFE = { info: 2.8, warn: 3.8 };
 const MAX_LINES = 3;
 
-// indicator lamps: 24 px grid, stroke = currentColor
 const svg = (p, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${p}</svg>`;
 const LAMP_ICONS = {
   eng: svg('<path d="M7 8h3V6h5v2h1.5l2 2.5H20V9h1.5v7H20v-1.5h-1.5L16 17H9l-2-2H5v2.5H3.5v-7H5V12h2z"/>'),
@@ -96,23 +81,22 @@ export class HUD {
       lamp: Object.fromEntries(['eng', 'hb', 'tc', 'abs', 'light', 'haz', 'bar', 'snd'].map(id => [id, $('l-' + id)])),
     };
     this.sctx = $('h-suspcv').getContext('2d');
-    this.c = {};                       // last written values
+    this.c = {};
     this.opts = { speedUnit: 'kmh', pressureUnit: 'psi', cluster: 'auto', hudScale: 1, hints: true, suspension: false, telemetry: false, fps: false, arcade: false };
     this.device = 'kb';
-    this.lines = [];                   // ticker lines, oldest first: { key, params, html, level, t, el }
-    this.hintKey = null;               // the standing tip's id, if one is up
+    this.lines = [];
+    this.hintKey = null;
     this.tipState = { rolled: 0, stuck: 0, neutral: 0, engine: 0, clear: 0, acc: 0, id: null };
     this.fpsAcc = 0; this.fpsN = 0; this.suspAcc = 1; this.teleAcc = 1;
     this.soundState = 'locked';
     this.onMenu = null;
-    this.e.menuBtn.addEventListener('mousedown', e => e.preventDefault());   // never take keyboard focus
+    this.e.menuBtn.addEventListener('mousedown', e => e.preventDefault());
     this.e.menuBtn.addEventListener('click', () => this.onMenu && this.onMenu());
     window.addEventListener('resize', () => this.resize());
     this.setDevice('kb', true);
     this.resize();
   }
 
-  // ------------------------------------------------------------------ config
   configure(opts) {
     Object.assign(this.opts, opts);
     const o = this.opts;
@@ -122,14 +106,14 @@ export class HUD {
     this.e.hints.hidden = !o.hints;
     this.suspAcc = this.teleAcc = 1;
     if (this.suspPrev) this.suspPrev.fill(-1);
-    this.c.spd = this.c.psi = this.c.box = undefined;        // units / options may have changed
+    this.c.spd = this.c.psi = this.c.box = undefined;
     this.e.unit.textContent = speedUnit(o.speedUnit).label;
     this.resize();
   }
 
   resize() {
     const W = window.innerWidth || 1440, H = window.innerHeight || 900;
-    // square root: the HUD shrinks slower than the window, so text stays readable in small windows
+
     const s = clamp(Math.sqrt(Math.min(W / 1600, H / 1000)), 0.8, 1.4) * (this.opts.hudScale || 1);
     if (s === this.scale && W === this.W && H === this.H) return;
     this.scale = s; this.W = W; this.H = H;
@@ -151,11 +135,10 @@ export class HUD {
       ? `<span>${k('camera')} Camera</span><span>${k('recover')} Recover</span><span>${k('shiftUp')}${k('shiftDown')} Shift</span>`
       : `<span>${k('controls')} Controls</span><span>${k('locations')} Locations</span><span>${k('camera')} Camera</span><span>${k('tuning')} Tuning</span><span>${k('recover')} Recover</span>`;
     this.e.suspKey.innerHTML = capsHTML('suspension', 'kb');
-    // key caps in the ticker follow the device
+
     for (const x of this.lines) this.setLine(x, this.render(x.key, x.params));
   }
 
-  // sound: 'locked' (waiting for a gesture), 'on', 'muted', 'error'
   setSound(state) {
     if (state === this.soundState) return;
     const was = this.soundState;
@@ -163,7 +146,6 @@ export class HUD {
     if (state === 'error' && was !== 'error') this.notify('soundError');
   }
 
-  // ------------------------------------------------------------------ ticker
   render(id, p = {}) {
     const m = MESSAGES[id];
     if (!m) { console.warn('hud: unknown message', id); return escapeHTML(id); }
@@ -171,15 +153,13 @@ export class HUD {
     for (const [key, v] of Object.entries(p)) ep[key] = typeof v === 'string' ? escapeHTML(v) : v;
     return m.text(ep, k => capsHTML(k, this.device));
   }
-  // The ticker is a short stack over the cluster, newest at the bottom. A new line slides in from below
-  // and pushes the others up; a line that times out (or the oldest past MAX_LINES) fades out upwards.
-  // An id that is already up updates in place (with a nudge) instead of stacking.
+
   notify(id, params) {
     const m = MESSAGES[id];
     const level = m?.level === 'warn' ? 'warn' : 'info';
     this.pushLine(id, params, level, LIFE[level]);
   }
-  // a standing tip (or null): a line with no timeout, until its condition clears
+
   setHint(id, params) {
     if (this.hintKey && this.hintKey !== id) { const x = this.lines.find(l => l.key === this.hintKey); if (x) this.dropLine(x); }
     this.hintKey = id || null;
@@ -191,7 +171,7 @@ export class HUD {
     if (same) {
       same.t = t; same.params = params;
       const changed = this.setLine(same, html);
-      // the text nudges, not the line: the line's transform holds its place in the stack
+
       if (nudge || changed) same.el.firstChild.animate?.([{ transform: 'translateX(calc(-4 * var(--u)))' }, { transform: 'none' }], { duration: 240, easing: 'ease-out' });
       return;
     }
@@ -218,7 +198,7 @@ export class HUD {
     setTimeout(() => { x.el.remove(); this.lines = this.lines.filter(y => y !== x); }, 340);
     this.layoutLines();
   }
-  // stack positions: the newest line sits on the cluster, each older one a step higher and dimmer
+
   layoutLines() {
     const live = this.lines.filter(x => !x.leaving);
     live.forEach((x, i) => { const k = live.length - 1 - i; x.el.style.setProperty('--k', k); x.el.dataset.k = k; });
@@ -227,18 +207,14 @@ export class HUD {
     for (const x of this.lines) if (!x.leaving && (x.t -= dt) <= 0) this.dropLine(x);
   }
 
-  // ------------------------------------------------------------------ per frame
-  // ctx: { cam, paused, raw, telemetry: () => string }
   update(dt, v, view, ctx = {}) {
     const d = v.drivetrain, e = this.e, c = this.c, o = this.opts;
     if (d.message && d.message.seq !== this._msgSeq) { this._msgSeq = d.message.seq; this.notify(d.message.id, d.message.params); }
     this.tickTicker(dt);
 
-    // layout
     const compact = o.cluster === 'compact' || (o.cluster === 'auto' && (ctx.cam === 'cockpit' || this.small));
     if (compact !== c.compact) { c.compact = compact; e.cluster.classList.toggle('compact', compact); }
 
-    // rpm scale follows the engine: 0 .. the limiter rounded up to 1000 rpm
     const E = v.P.engine;
     if (E !== c.E || E.limiterRpm !== c.lim || E.redlineRpm !== c.red) {
       c.E = E; c.lim = E.limiterRpm; c.red = E.redlineRpm;
@@ -255,7 +231,6 @@ export class HUD {
     const zone = rpm >= E.redlineRpm ? 'red' : rpm >= E.redlineRpm - 600 ? 'near' : '';
     if (zone !== c.rpmZone) { c.rpmZone = zone; e.rpmFill.className = 'rpm-fill ' + zone; }
 
-    // gear + speed
     const gear = d.gearLabel();
     if (gear !== c.gear) { c.gear = gear; e.gear.textContent = gear; }
     const shifting = !!d.shift || d.grind > 0;
@@ -264,13 +239,12 @@ export class HUD {
     const spd = Math.round(Math.abs(v.speed) * su.k);
     if (spd !== c.spd) { c.spd = spd; e.spd.textContent = spd; }
 
-    // car glyph: wheel slip and diff locks
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i];
       const st = !w.contact ? 'w air' : (w.slipNorm || 0) > 0.95 ? 'w slip' : (w.slipNorm || 0) > 0.7 ? 'w edge' : 'w';
       if (st !== c['w' + i]) { c['w' + i] = st; e.wheels[i].setAttribute('class', st); }
     }
-    // the centre and front diff markers exist only on a car with a transfer case
+
     const locks = (d.frontLock ? 1 : 0) | (d.centerLock ? 2 : 0) | (d.rearLock ? 4 : 0) | (d.fixedRwd ? 8 : 0);
     if (locks !== c.locks) {
       c.locks = locks;
@@ -280,7 +254,6 @@ export class HUD {
       e.diffs[2].setAttribute('class', cls(d.rearLock, true));
     }
 
-    // pedals
     const manual = d.mode === 'manual';
     this.bar(e.thr, 'thr', v.ctl.throttle);
     this.bar(e.brk, 'brk', Math.max(v.ctl.brake, v.ctl.handbrake));
@@ -288,10 +261,8 @@ export class HUD {
     const pedal = manual && !d.clutchAssist;
     if (pedal !== c.pedal) { c.pedal = pedal; e.cluWrap.classList.toggle('off', !pedal); }
 
-    // lamps
     const L = e.lamp;
-    // working (TC / ABS intervening, handbrake on) is 'act': the lamp lights in the cool colour, no flash.
-    // A flash only marks the player switching something (the last argument: the switch's value).
+
     this.lampState(L.eng, 'eng', d.running ? 'off' : d.cranking ? 'blink' : 'warn');
     this.lampState(L.hb, 'hb', v.ctl.handbrake > 0.5 ? 'act' : 'off');
     this.lampState(L.tc, 'tc', !v.tc ? 'off' : v.tcActive > 0 ? 'act' : 'on', v.tc);
@@ -307,7 +278,6 @@ export class HUD {
     if (snd !== c.sndIcon) { const first = c.sndIcon === undefined; c.sndIcon = snd; L.snd.innerHTML = LAMP_ICONS[snd === 'on' ? 'snd' : 'mute']; if (!first) this.flash(L.snd); }
     this.lampState(L.snd, 'snd', snd === 'on' ? 'off' : snd === 'muted' ? 'on' : snd === 'locked' ? 'pulse' : 'warn');
 
-    // info row (fields the player changes flash)
     this.field(e.box, 'box', manual ? (d.clutchAssist ? 'Manual' : 'Manual · pedal') : (o.arcade ? 'Auto · arcade' : 'Auto'));
     const drive = d.fixedRwd ? { welded: 'Welded diff', lsd: 'LSD', open: 'Open diff' }[d.rearDiff] || 'RWD'
       : `${d.rwd ? '2WD' : '4WD'} · ${d.range === 'low' ? 'Low' : 'High'}`;
@@ -317,11 +287,9 @@ export class HUD {
     for (const w of v.wheels) if (w.contact) { surf = w.surf?.name || 'Ground'; break; }
     if (surf !== c.surf) { c.surf = surf; e.surf.textContent = surf; }
 
-    // standing tips (4 Hz)
     if (ctx.paused) this.setHint(null);
     else if ((this.tipState.acc += dt) > 0.25) { this.tips(this.tipState.acc, v, ctx.raw || v.ctl); this.tipState.acc = 0; }
 
-    // optional panels
     if (o.suspension && (this.suspAcc += dt) > 0.05) { this.suspAcc = 0; this.drawSuspension(v); }
     if (o.telemetry && (this.teleAcc += dt) > 0.1) { this.teleAcc = 0; e.tele.textContent = this.telemetryText(v, ctx.telemetry ? ctx.telemetry() : ''); }
     this.fpsAcc += dt; this.fpsN++;
@@ -334,9 +302,7 @@ export class HUD {
     this.c[k] = q;
     el.style.transform = `scaleY(${q / 100})`;
   }
-  // a lamp: 'off' (dim) | 'on' (main colour) | 'act' (cool: working) | 'warn' (hot) | 'blink' (hot,
-  // blinking) | 'pulse' (cool, blinking). sw: the player-controlled switch behind it; it flashes only when
-  // that changes, never when the system merely starts or stops working.
+
   lampState(el, k, s, sw) {
     const key = 'L' + k, swKey = 'S' + k;
     if (sw !== undefined && sw !== this.c[swKey]) {
@@ -347,7 +313,7 @@ export class HUD {
     this.c[key] = s;
     el.dataset.s = s;
   }
-  // an info field: text, and a flash when it changes after the first frame
+
   field(el, k, text) {
     const key = 'F' + k;
     if (text === this.c[key]) return;
@@ -358,7 +324,6 @@ export class HUD {
   }
   flash(el) { el.animate?.([{ background: 'rgba(255,255,255,0.22)', color: '#fff' }, { background: 'rgba(255,255,255,0)' }], { duration: 650, easing: 'ease-out' }); }
 
-  // ------------------------------------------------------------------ standing tips
   tips(dt, v, raw) {
     const d = v.drivetrain, ts = this.tipState;
     const sp = Math.abs(v.speed);
@@ -375,14 +340,12 @@ export class HUD {
     else if (engine > 0.6) { id = 'tipEngine'; p = { stalled: d.stalled }; }
     else if (neutral > 1.2) { id = 'tipNeutral'; p = { manual: d.mode === 'manual', sel: d.selector }; }
     else if (stuck > 3) { id = 'tipStuck'; p = { offroad: !d.fixedRwd }; }
-    if (!id && ts.id) { if ((ts.clear += dt) < 0.75) return; }   // hysteresis: don't flicker
+    if (!id && ts.id) { if ((ts.clear += dt) < 0.75) return; }
     ts.clear = 0; ts.id = id;
     this.setHint(id, p);
   }
 
-  // ------------------------------------------------------------------ suspension panel
   drawSuspension(v) {
-    // quantised to what the panel can show (kg, mm, % travel, slip colour, steer, 0.1 deg twist)
     const q = this.suspKey || (this.suspKey = new Int32Array(27)), prev = this.suspPrev || (this.suspPrev = new Int32Array(27).fill(-1));
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i], ax = w.axle;

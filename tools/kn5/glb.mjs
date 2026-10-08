@@ -1,6 +1,3 @@
-// Minimal GLB writer: triangle meshes (POSITION, NORMAL, TEXCOORD_0, uint32 indices), one node each,
-// materials as plain pbrMetallicRoughness with `extras` carrying whatever the caller wants.
-
 export function writeGlb({ meshes, materials, extras = {} }) {
   const chunks = [];
   let offset = 0;

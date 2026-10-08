@@ -2,18 +2,14 @@ import * as THREE from 'three';
 import { VehicleView } from './vehicleView.js';
 import { shared } from './truckMaterials.js';
 
-// Drives a GLB car (carModel.js) from the physics: body pose, hubs from the axle state, steering, spin,
-// lamps. The model keeps its own track: each wheel sits at the physics hub plus the model's lateral
-// offset from track / 2.
-
 const _v = new THREE.Vector3();
 const reversingNow = d => (d.mode === 'manual' ? d.manualGear < 0 : d.selector === 'R');
 
 export class CarView extends VehicleView {
   constructor(model, vehicle) {
     super(model, vehicle);
-    this.features = {};      // no light bar on a road car
-    // lateral offset of each model wheel from the physics hub (model track vs P.track)
+    this.features = {};
+
     this.dx = model.wheels.map((w, i) => w.rest.x - vehicle.wheels[i].side * this.P.track / 2);
   }
 
@@ -23,7 +19,7 @@ export class CarView extends VehicleView {
     m.root.quaternion.copy(quat);
     for (let i = 0; i < 4; i++) {
       const w = v.wheels[i], mw = m.wheels[i], roll = v.wheelRoll(w);
-      // physics hub (body frame), plus the model's own track offset along the wheel's roll
+
       v.hubLocal(w, _v);
       mw.hub.position.set(_v.x + this.dx[i] * Math.cos(roll), _v.y + this.dx[i] * Math.sin(roll), mw.rest.z);
       mw.hub.rotation.set(0, 0, roll);

@@ -1,27 +1,20 @@
 import * as THREE from 'three';
-import { D } from './truckDims.js';
-
-// X-ray view of the physics: chassis collision boxes, wheel side cylinders, tyre outlines against the
-// arch tops, suspension travel gauges, tyre contact patches and the points where the body touches the
-// ground or an obstacle (the touching box turns red). Drawn on top of everything (no depth test).
-//
-// Nothing exists until it is first switched on, and while off the group is invisible and update() returns
-// at once, so it costs nothing in normal play.
 
 const COL = {
   box: new THREE.Color(0.25, 0.85, 1.0),
   hit: new THREE.Color(1.0, 0.22, 0.15),
   sel: new THREE.Color(1.0, 0.72, 0.28),
   wheel: new THREE.Color(0.55, 0.6, 1.0),
-  tyre: new THREE.Color(0.85, 0.9, 0.95),
   ok: new THREE.Color(0.43, 0.86, 0.55),
   stop: new THREE.Color(1.0, 0.7, 0.28),
+  cool: new THREE.Color(0.35, 0.7, 1.0),
 };
+const G = 9.81;
+const GAUGE_SCALE = 2;
+const PATCH_R = 0.2;
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _p = new THREE.Vector3(), _cq = new THREE.Quaternion();
 
-// Contacts of a collider after world.step(): the solver contacts are cleared by then, so this reads the
-// manifold points and keeps those closer than 1 cm. cb(worldPoint) per point; returns the count.
 export function touchPoints(world, c, cb) {
   let n = 0;
   world.contactPairsWith(c, other => {
@@ -46,16 +39,6 @@ const lineMat = (color, opacity = 1) => new THREE.LineBasicMaterial({ color, tra
 const fillMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
 const onTop = o => { o.renderOrder = 999; o.frustumCulled = false; return o; };
 
-// unit circle in the y-z plane (a wheel seen from the side), n segments
-function circle(n = 48) {
-  const p = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2, b = ((i + 1) / n) * Math.PI * 2;
-    p.push(0, Math.cos(a), Math.sin(a), 0, Math.cos(b), Math.sin(b));
-  }
-  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-}
-// cylinder outline along x: two rims and four lines
 function cylinderLines(n = 32) {
   const p = [];
   for (const x of [-1, 1]) for (let i = 0; i < n; i++) {
@@ -70,65 +53,124 @@ export class ColliderView {
   constructor(scene, model, vehicle) {
     this.scene = scene; this.m = model; this.v = vehicle;
     this.enabled = false;
+    this.physics = false;
+    this.susp = false;
+    this.corners = [];
     this.selected = -1;
     this.built = false;
-    this.touching = new Set();      // chassis box indices touching something this frame
+    this.touching = new Set();
     this.contacts = 0;
   }
 
-  setEnabled(on) {
+  setEnabled(on) { this.physics = !!on; this.setMode(); }
+  setSusp(on) { this.susp = !!on; this.setMode(); }
+
+  setMode() {
+    const on = this.physics || this.susp;
     this.enabled = on;
     if (on && !this.built) this.build();
-    if (this.built) { this.body.visible = on; this.world.visible = on; }
-    if (on) this.rebuildBoxes();
+    if (!this.built) return;
+    this.body.visible = on; this.world.visible = on;
+    this.boxGroup.visible = this.physics;
+    this.dots.visible = this.physics;
+    for (const o of this.wheels) o.cyl.visible = this.physics;
+    this.suspBody.visible = this.susp; this.suspWorld.visible = this.susp;
+    for (const g of this.gauges) g.extra.visible = this.susp;
+    if (!this.physics) this.touching.clear();
+    if (this.susp) { this.corners = []; this._t = 0; }
+    if (this.physics) this.rebuildBoxes();
   }
 
   build() {
     this.built = true;
-    // body frame: lives under the truck root, so it follows the interpolated pose
+
     this.body = onTop(new THREE.Group()); this.body.name = 'collider-view';
     this.m.root.add(this.body);
     this.world = onTop(new THREE.Group()); this.world.name = 'collider-view-world';
     this.scene.add(this.world);
     this.boxGroup = new THREE.Group(); this.body.add(this.boxGroup);
     this.boxes = [];
-    // wheels: side cylinder, tyre outline, travel gauge
-    this.cyl = cylinderLines(); this.circ = circle();
+
+    this.cyl = cylinderLines();
     this.wheels = this.v.wheels.map(() => {
       const cyl = onTop(new THREE.LineSegments(this.cyl, lineMat(COL.wheel, 0.75)));
-      const tyre = onTop(new THREE.LineSegments(this.circ, lineMat(COL.tyre, 0.9)));
-      this.body.add(cyl, tyre);
-      return { cyl, tyre };
+      this.body.add(cyl);
+      return { cyl };
     });
-    // arch tops: a short line over each wheel at D.ARCH_TOP
-    const ap = [];
-    for (const z of [D.ARCH_F, D.ARCH_R]) for (const x of [-1, 1]) ap.push(x * 0.78, D.ARCH_TOP, z - 0.34, x * 0.78, D.ARCH_TOP, z + 0.34);
-    this.arches = onTop(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(ap, 3)), lineMat(0xffffff, 0.6)));
-    this.body.add(this.arches);
-    // travel gauges, outside the body next to each wheel: droop..bump, bump stop zone, current position
+
     this.gauges = this.v.wheels.map(w => {
       const g = new THREE.Group();
-      const rail = onTop(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]), lineMat(0xffffff, 0.45)));
-      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.035, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.55)));
-      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.022), fillMat(COL.ok, 0.95)));
-      g.add(rail, stop, mark);
+      const rail = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.006, 1).translate(0, 0.5, 0), fillMat(0xffffff, 0.85)));
+      const stop = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.0175, 1).translate(0, 0.5, 0), fillMat(COL.stop, 0.9)));
+      const mark = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.045, 0.022), fillMat(COL.ok, 1)));
+
+      const extra = new THREE.Group();
+      const still = onTop(new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.005), fillMat(COL.cool, 1)));
+      extra.add(still);
+      mark.renderOrder = 1000;
+      g.add(rail, stop, mark, extra);
       g.rotation.y = Math.PI / 2;
       this.body.add(g);
-      return { g, rail, stop, mark, side: w.side };
+      return { g, rail, stop, mark, extra, still, side: w.side };
     });
-    // contact patches (world): a disc per wheel, size by load, colour by slip
+
+    const ring = new THREE.RingGeometry(PATCH_R - 0.012, PATCH_R, 48);
     this.patches = this.v.wheels.map(() => {
-      const d = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 24), fillMat(COL.ok, 0.7)));
-      this.world.add(d);
-      return d;
+      const g = new THREE.Group();
+      const disc = onTop(new THREE.Mesh(new THREE.CircleGeometry(1, 36), fillMat(COL.ok, 0.35)));
+      g.add(disc, onTop(new THREE.Mesh(ring, fillMat(0xffffff, 0.9))));
+      this.world.add(g);
+      return { g, disc };
     });
-    // body contact points (world)
+
     this.dots = onTop(new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 10, 8), fillMat(COL.hit, 0.95), 48));
     this.dots.count = 0;
     this.world.add(this.dots);
+    this.buildSusp();
   }
 
-  // chassis boxes from the vehicle's params (after an edit or a setup change)
+  buildSusp() {
+    this.suspBody = new THREE.Group(); this.body.add(this.suspBody);
+    this.suspWorld = new THREE.Group(); this.world.add(this.suspWorld);
+    const bar = new THREE.PlaneGeometry(0.03, 1).translate(0, 0.5, 0);
+    this.springs = this.v.wheels.map(() => {
+      const damper = onTop(new THREE.Mesh(bar, fillMat(COL.cool, 0.85)));
+      damper.rotation.y = Math.PI / 2;
+      this.suspBody.add(damper);
+      return { damper };
+    });
+
+    const ball = new THREE.SphereGeometry(1, 16, 12);
+    this.rc = [0, 1].map(() => { const m = onTop(new THREE.Mesh(ball, fillMat(COL.stop, 0.95))); m.scale.setScalar(0.045); this.suspBody.add(m); return m; });
+    this.com = onTop(new THREE.Mesh(ball, fillMat(0xffffff, 0.95))); this.com.scale.setScalar(0.06); this.suspBody.add(this.com);
+  }
+
+  suspCorner(w, k) {
+    const v = this.v, P = v.P, ax = w.axle, p = ax.p;
+    let comp, rate, rateD;
+    if (v.indep) { comp = w.c; rate = rateD = w.vz - w.vMountU; }
+    else {
+      const cd = ax.vz - ax.vMountU, cs = Math.cos(ax.phi) * (ax.Om - ax.rollRateBody);
+      comp = v.wheelComp(w);
+      rate = cd + w.side * (p.springTrack / 2) * cs;
+      rateD = cd + w.side * (p.damperTrack / 2) * cs;
+    }
+    const spring = v.springForce(p, comp, rate, ax.k), damper = v.damperForce(p, rateD);
+    const bar = w.side * (p.arb || 0) * v.axleRoll(ax.i) / P.track;
+    const ff = (P.wheelbase / 2 - P.com[2]) / P.wheelbase, frac = ax.i === 0 ? ff : 1 - ff;
+    const sprung = P.bodyMass * G * frac / 2;
+    const load = w.contact ? w.FnAvg : 0;
+    const c = this.corners[w.i] || (this.corners[w.i] = { comp, rate, spring, damper, bar, load });
+    c.travel = p.travel; c.stop = p.travel - 0.05;
+    c.sprung = sprung; c.staticComp = Math.max(0, sprung / ax.k - (p.preload || 0));
+    c.staticLoad = (P.bodyMass * frac + p.mass) * G / 2;
+    c.compNow = comp; c.springNow = spring; c.dampNow = damper; c.loadNow = load;
+    c.comp += (comp - c.comp) * k; c.rate += (rate - c.rate) * k; c.spring += (spring - c.spring) * k;
+    c.damper += (damper - c.damper) * k; c.bar += (bar - c.bar) * k; c.load += (load - c.load) * k;
+    c.onStop = comp >= c.stop; c.topped = comp < 0.003;
+    return c;
+  }
+
   rebuildBoxes() {
     if (!this.built) return;
     for (const b of this.boxes) { this.boxGroup.remove(b.edges, b.fill); b.edges.geometry.dispose(); b.fill.geometry.dispose(); }
@@ -144,8 +186,56 @@ export class ColliderView {
 
   update() {
     if (!this.enabled) return;
-    const v = this.v, P = v.P, world = v.world;
-    // which chassis boxes touch something, and where
+    const v = this.v, P = v.P, world = v.world, phys = this.physics, susp = this.susp;
+    const now = performance.now(), dt = this._t ? Math.min(0.1, (now - this._t) / 1000) : 0;
+    this._t = now;
+
+    if (phys) this.updateBoxes(world, v);
+
+    const R = v.R, ke = dt ? 1 - Math.exp(-dt / 0.12) : 1;
+    v.wheels.forEach((w, i) => {
+      const ax = w.axle, ap = ax.p, o = this.wheels[i];
+      _q.setFromAxisAngle(Z, v.wheelRoll(w));
+      v.hubLocal(w, _v);
+      _q2.copy(_q).multiply(_q.setFromAxisAngle(Y, -w.steer));
+      if (phys) {
+        o.cyl.position.copy(_v); o.cyl.quaternion.copy(_q2);
+        const cr = R - 0.12 * R / 0.42;
+        o.cyl.scale.set(P.tire.width * 0.42, cr, cr);
+      }
+
+      if (phys) {
+        const hitW = w.sideCollider ? touchPoints(world, w.sideCollider) > 0 : false;
+        o.cyl.material.color.copy(hitW ? COL.hit : COL.wheel);
+      }
+
+      const g = this.gauges[i];
+      const comp = v.wheelComp(w);
+
+      g.g.position.set(w.side * (P.track / 2 + P.tire.width / 2 + 0.3), ax.droopY + 0.15, ap.z);
+      g.g.scale.setScalar(GAUGE_SCALE);
+      g.rail.scale.y = ap.travel;
+      g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
+      g.mark.position.y = Math.max(-0.02, Math.min(ap.travel + 0.02, comp));
+      g.mark.material.color.copy(comp > ap.travel - 0.05 ? (comp >= ap.travel - 0.005 ? COL.hit : COL.stop) : COL.ok);
+
+      const d = this.patches[i];
+      d.g.visible = w.contact && w.FnAvg > 0;
+      if (d.g.visible) {
+        d.g.position.copy(w.P).addScaledVector(w.n, 0.01);
+        d.g.quaternion.setFromUnitVectors(Z, w.n);
+        const ff = (P.wheelbase / 2 - P.com[2]) / P.wheelbase, frac = ax.i === 0 ? ff : 1 - ff;
+        const still = (P.bodyMass * frac + ap.mass) * G / 2;
+        d.disc.scale.setScalar(Math.max(0.02, Math.min(0.8, PATCH_R * w.FnAvg / still)));
+        const s = Math.min(1, w.slipNorm || 0);
+        d.disc.material.color.copy(COL.ok).lerp(COL.hit, s);
+      }
+      if (susp) this.updateSuspCorner(w, i, ke, dt);
+    });
+    if (susp) this.updateRollCentres();
+  }
+
+  updateBoxes(world, v) {
     this.touching.clear();
     let n = 0;
     const cols = v.chassisColliders;
@@ -163,43 +253,29 @@ export class ColliderView {
       b.fill.material.color.copy(c);
       b.fill.material.opacity = hit ? 0.28 : sel ? 0.2 : 0.06;
     });
-    // wheels: side cylinders (body frame, same pose as Vehicle.updateGeometry), tyre outlines, gauges
-    const R = v.R;
-    v.wheels.forEach((w, i) => {
-      const ax = w.axle, ap = ax.p, o = this.wheels[i];
-      _q.setFromAxisAngle(Z, v.wheelRoll(w));
-      v.hubLocal(w, _v);
-      _q2.copy(_q).multiply(_q.setFromAxisAngle(Y, -w.steer));
-      o.cyl.position.copy(_v); o.cyl.quaternion.copy(_q2);
-      const cr = R - 0.12 * R / 0.42;
-      o.cyl.scale.set(P.tire.width * 0.42, cr, cr);
-      o.tyre.position.copy(_v); o.tyre.quaternion.copy(_q2); o.tyre.scale.setScalar(R);
-      // tyre top against the arch top (body frame): red when it reaches the arch
-      const top = _v.y + R;
-      const rub = top > D.ARCH_TOP - 0.01;
-      o.tyre.material.color.copy(rub ? COL.hit : COL.tyre);
-      // side cylinder touching a rock / log / tree
-      const hitW = w.sideCollider ? touchPoints(world, w.sideCollider) > 0 : false;
-      o.cyl.material.color.copy(hitW ? COL.hit : COL.wheel);
-      // travel gauge: spring compression at this side, 0 = full droop, travel = hard stop
-      const g = this.gauges[i];
-      const comp = v.wheelComp(w);
-      g.g.position.set(w.side * (D.W + 0.12), ax.droopY, ap.z + (ax.i === 0 ? -0.62 : 0.62));
-      g.rail.scale.y = ap.travel;
-      g.stop.position.y = ap.travel - 0.05; g.stop.scale.y = 0.05;
-      g.mark.position.y = Math.max(-0.02, Math.min(ap.travel + 0.02, comp));
-      g.mark.material.color.copy(comp > ap.travel - 0.05 ? (comp >= ap.travel - 0.005 ? COL.hit : COL.stop) : COL.ok);
-      // contact patch
-      const d = this.patches[i];
-      d.visible = w.contact && w.FnAvg > 0;
-      if (d.visible) {
-        d.position.copy(w.P).addScaledVector(w.n, 0.01);
-        d.quaternion.setFromUnitVectors(Z, w.n);
-        d.scale.setScalar(0.05 + 0.12 * Math.sqrt(w.FnAvg / 5000));
-        const s = Math.min(1, w.slipNorm || 0);
-        d.material.color.copy(COL.ok).lerp(COL.hit, s);
-      }
-    });
+  }
+
+  updateSuspCorner(w, i, ke, dt) {
+    const v = this.v, P = v.P, ax = w.axle, ap = ax.p;
+    const c = this.suspCorner(w, ke);
+
+    const g = this.gauges[i];
+    g.still.position.y = Math.min(ap.travel, c.staticComp);
+
+    const s = this.springs[i];
+    const x = v.indep ? w.side * (P.track / 2 - 0.2) : w.side * (ap.springTrack ?? P.track * 0.7) / 2;
+    const y0 = ax.droopY + c.compNow, y1 = ax.droopY + ap.travel + 0.1;
+    const fd = c.damper, len = Math.min(0.4, Math.abs(fd) / 10000);
+    s.damper.visible = len > 0.004;
+    s.damper.position.set(x - w.side * 0.12, (y0 + y1) / 2, ap.z);
+    s.damper.scale.y = fd >= 0 ? len : -len;
+    s.damper.material.color.copy(fd >= 0 ? COL.cool : COL.stop);
+  }
+
+  updateRollCentres() {
+    const v = this.v, P = v.P;
+    P.axles.forEach((p, a) => { this.rc[a].visible = v.indep; this.rc[a].position.set(0, p.rcY ?? 0, p.z); });
+    this.com.position.set(P.com[0], P.com[1], P.com[2]);
   }
 
   dispose() {

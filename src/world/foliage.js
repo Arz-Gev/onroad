@@ -2,11 +2,6 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mulberry32 } from './noise.js';
 
-// Foliage: a card atlas drawn with Canvas2D at startup (needle sprays, pine tufts, birch leaves, fern
-// fronds, shrub leaves, bare twigs), and procedural tree / plant geometry that uses it.
-// Geometry attributes: position, normal (card normals bent outwards from the crown, so the crown shades
-// like a volume), uv (atlas), aWind (0 at the root .. 1 at the tips: how far the vertex sways).
-
 export const ATLAS = { cols: 4, rows: 2, cell: 512 };
 export const CELLS = { spruce: 0, pine: 1, birch: 2, fern: 3, bush: 4, twigs: 5, grassTuft: 6, flowers: 7 };
 
@@ -15,7 +10,6 @@ const cellUV = (i) => {
   return { u0: c / ATLAS.cols, v0: 1 - (r + 1) / ATLAS.rows, du: 1 / ATLAS.cols, dv: 1 / ATLAS.rows };
 };
 
-// ---------------------------------------------------------------- atlas
 export function makeFoliageAtlas() {
   const S = ATLAS.cell, W = S * ATLAS.cols, H = S * ATLAS.rows;
   const cv = document.createElement('canvas');
@@ -27,7 +21,6 @@ export function makeFoliageAtlas() {
   const cell = (i, fn) => { g.save(); g.translate((i % ATLAS.cols) * S, Math.floor(i / ATLAS.cols) * S); g.beginPath(); g.rect(0, 0, S, S); g.clip(); fn(); g.restore(); };
   const line = (x0, y0, x1, y1, w, col) => { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
 
-  // 0: spruce spray (seen from above): twig up the middle, side twigs, dense short needles
   cell(CELLS.spruce, () => {
     const twig = (x0, y0, ang, len, w, depth) => {
       const x1 = x0 + Math.cos(ang) * len, y1 = y0 + Math.sin(ang) * len;
@@ -48,7 +41,6 @@ export function makeFoliageAtlas() {
     twig(S / 2, S - 4, -Math.PI / 2, S - 30, 4, 1);
   });
 
-  // 1: pine: a dense mass of needle bundles on short twigs
   cell(CELLS.pine, () => {
     for (let b = 0; b < 16; b++) {
       const a0 = -Math.PI / 2 + R(-1.1, 1.1), l0 = R(120, 330);
@@ -62,7 +54,6 @@ export function makeFoliageAtlas() {
     }
   });
 
-  // 2: birch: thin twigs with small oval leaves
   const leaf = (x, y, a, l, w, col) => {
     g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = col;
     g.beginPath(); g.ellipse(l / 2, 0, l / 2, w / 2, 0, 0, Math.PI * 2); g.fill();
@@ -81,7 +72,6 @@ export function makeFoliageAtlas() {
     }
   });
 
-  // 3: fern frond: rachis with tapered pinnae
   cell(CELLS.fern, () => {
     const x0 = S / 2, y0 = S - 6, len = S - 40;
     g.save(); g.translate(x0, y0);
@@ -98,7 +88,6 @@ export function makeFoliageAtlas() {
     g.restore();
   });
 
-  // 4: shrub leaves: dense broad leaves
   cell(CELLS.bush, () => {
     for (let k = 0; k < 260; k++) {
       const r = Math.sqrt(rnd()) * S * 0.44, a = R(0, Math.PI * 2);
@@ -106,7 +95,6 @@ export function makeFoliageAtlas() {
     }
   });
 
-  // 5: bare twigs (dead trees, winter shrubs)
   cell(CELLS.twigs, () => {
     const br = (x, y, a, l, w, d) => {
       const x1 = x + Math.cos(a) * l, y1 = y + Math.sin(a) * l;
@@ -116,7 +104,6 @@ export function makeFoliageAtlas() {
     br(S / 2, S - 4, -Math.PI / 2, 150, 7, 4);
   });
 
-  // 6: grass tuft (side view): blades from the bottom centre
   cell(CELLS.grassTuft, () => {
     for (let k = 0; k < 60; k++) {
       const x = S / 2 + R(-90, 90), a = -Math.PI / 2 + R(-0.5, 0.5), l = R(200, 470);
@@ -125,7 +112,6 @@ export function makeFoliageAtlas() {
     }
   });
 
-  // 7: meadow flowers (side view): stems with small heads
   cell(CELLS.flowers, () => {
     for (let k = 0; k < 26; k++) {
       const x = R(40, S - 40), h = R(200, 440), top = S - h;
@@ -137,7 +123,6 @@ export function makeFoliageAtlas() {
     }
   });
 
-  // read back (straight alpha), bleed colour into transparent texels so mipmaps don't get dark fringes
   const img = g.getImageData(0, 0, W, H).data;
   const data = new Uint8Array(img.length);
   data.set(img);
@@ -151,7 +136,7 @@ export function makeFoliageAtlas() {
       if (n) { data[o] = r / n; data[o + 1] = gg / n; data[o + 2] = b / n; }
     }
   }
-  // the canvas has y down; the texture's v goes up: flip rows
+
   const flipped = new Uint8Array(data.length), row = W * 4;
   for (let y = 0; y < H; y++) flipped.set(data.subarray(y * row, (y + 1) * row), (H - 1 - y) * row);
   const t = new THREE.DataTexture(flipped, W, H, THREE.RGBAFormat);
@@ -163,10 +148,8 @@ export function makeFoliageAtlas() {
   return t;
 }
 
-// ---------------------------------------------------------------- geometry helpers
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
 
-// a card (quad) in the atlas cell, base at the origin, extending along +y, facing +z; then transformed
 function card(cellIdx, w, h, matrix, windBase, windTip, crownCentre, normalBend = 0.6) {
   const c = cellUV(cellIdx);
   const g = new THREE.PlaneGeometry(w, h).translate(0, h / 2, 0);
@@ -176,7 +159,7 @@ function card(cellIdx, w, h, matrix, windBase, windTip, crownCentre, normalBend 
   const pos = g.attributes.position, nor = g.attributes.normal;
   const wind = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
-    wind[i] = i < 2 ? windTip : windBase; // PlaneGeometry: vertices 0,1 are the top row
+    wind[i] = i < 2 ? windTip : windBase;
     if (crownCentre) {
       _v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).sub(crownCentre).normalize();
       const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
@@ -189,7 +172,6 @@ function card(cellIdx, w, h, matrix, windBase, windTip, crownCentre, normalBend 
   return g;
 }
 
-// tapered cylinder along a polyline (trunk / branch), bark uv: u around, v along (metres / vScale)
 function tube(points, radii, sides, vScale, windAt) {
   const pos = [], nor = [], uv = [], wind = [], idx = [];
   let vAcc = 0;
@@ -223,21 +205,17 @@ function tube(points, radii, sides, vScale, windAt) {
 }
 
 const cardMatrix = (pos, dir, roll, tiltUp = 0) => {
-  // card plane spanned by its length direction `dir` and a side vector; roll around dir
   const y = dir.clone().normalize();
   let x = new THREE.Vector3(0, 1, 0).cross(y);
   if (x.lengthSq() < 1e-4) x.set(1, 0, 0);
   x.normalize();
   let z = x.clone().cross(y).normalize();
-  // roll the card around its length axis (0 = lying flat, facing up-ish)
+
   const xr = x.clone().multiplyScalar(Math.cos(roll)).addScaledVector(z, Math.sin(roll));
   const zr = xr.clone().cross(y).normalize();
   _m.makeBasis(xr, y, zr).setPosition(pos);
   return _m.clone();
 };
-
-// ---------------------------------------------------------------- species
-// Each builder returns { trunk, crown, height, crownR, trunkR }. Sizes in metres, base at the origin.
 
 export function buildSpruce(seed, H = 17) {
   const rnd = mulberry32(seed);
@@ -263,7 +241,7 @@ export function buildSpruce(seed, H = 17) {
       const dir = new THREE.Vector3(Math.cos(a), droop, Math.sin(a)).normalize();
       const base = new THREE.Vector3(lean.x * t * t, h, lean.y * t * t);
       branches.push({ base, dir, len, t });
-      // two or three sprays along the branch, roughly flat, slightly cupped
+
       const nC = len > 1.6 ? 3 : 2;
       for (let c = 0; c < nC; c++) {
         const u = c / nC;
@@ -275,13 +253,13 @@ export function buildSpruce(seed, H = 17) {
     }
     whorl++;
   }
-  // top: crossed vertical sprays
+
   for (let k = 0; k < 3; k++) {
     const a = k / 3 * Math.PI;
     const m = cardMatrix(new THREE.Vector3(lean.x, H - 1.6, lean.y), new THREE.Vector3(0, 1, 0), a);
     cards.push(card(CELLS.spruce, 0.9, 2.0, m, 0.8, 1.0, centre, 0.4));
   }
-  // thin branch sticks under the sprays (visible from below)
+
   const sticks = branches.filter((b, i) => i % 2 === 0 && b.len > 1).map(b => tube([b.base, b.base.clone().addScaledVector(b.dir, b.len * 0.8)], [0.035, 0.012], 3, 1.0, (t) => 0.2 + b.t * 0.4 + t * 0.3));
   const crown = mergeGeometries(cards);
   return { trunk: mergeGeometries([trunk, ...sticks]), crown, height: H, crownR: maxR, trunkR: trunkR[0], crownBase };
@@ -299,7 +277,6 @@ export function buildPine(seed, H = 19) {
   const centre = new THREE.Vector3(0, (crownBase + H) / 2, 0);
   const nb = 11;
   const clump = (p, size, t, up = 0) => {
-    // a rounded clump of needle cards facing outwards
     for (let c = 0; c < 7; c++) {
       const d = new THREE.Vector3(R(-1, 1), R(-0.3, 1) + up, R(-1, 1)).normalize();
       const m = cardMatrix(p.clone().addScaledVector(d, -size * 0.45), d, R(0, Math.PI));
@@ -370,7 +347,6 @@ export function buildDead(seed, H = 11) {
   return { trunk: mergeGeometries(parts), crown: mergeGeometries(cards), height: H, crownR: 2, trunkR: rr[0], crownBase: H * 0.3 };
 }
 
-// undergrowth: crossed cards
 export function buildPlant(kind, seed) {
   const rnd = mulberry32(seed);
   const R = (a, b) => a + (b - a) * rnd();

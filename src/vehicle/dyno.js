@@ -1,6 +1,3 @@
-// "Measure 0-100": the real vehicle physics (same Vehicle, same params, 240 Hz) on a flat dirt test pad,
-// in its own Rapier world. Runs in a worker (dyno.worker.js) so the game keeps its frame rate; the panel
-// falls back to running it in slices on the main thread if workers are unavailable.
 import { Vehicle } from './Vehicle.js';
 import { SURFACES } from './tire.js';
 
@@ -9,8 +6,7 @@ const H = 1 / 240;
 export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], surface = 'dirt', target = 100, maxT = 45, stepsPerYield = 240 } = {}) {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = H;
-  // 160 m x 1400 m flat strip (the truck runs towards -z). Wide: with no one at the wheel the truck wanders a
-  // few metres over a slow 400 m run (axle wrap under power x the rear axle's roll steer)
+
   const n = 8, m = 280, heights = new Float32Array((n + 1) * (m + 1));
   world.createCollider(RAPIER.ColliderDesc.heightfield(n, m, heights, { x: 160, y: 1, z: 1400 }).setFriction(0.8));
   world.step();
@@ -18,9 +14,9 @@ export function* accelRun(RAPIER, P, { gearbox = 'auto', pressures = [20, 20], s
   v.pressures = [...pressures];
   const d = v.drivetrain;
   if (gearbox === 'manual') d.toggleMode();
-  // no steering: the pad is flat and the truck symmetric (a lane-keeping correction scrubbed the tyres)
+
   const raw = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
-  // settle on the springs, then select first / D
+
   for (let i = 0; i < 360; i++) { v.step(H, raw); world.step(); }
   if (gearbox === 'manual') { d.requestShift(1); for (let i = 0; i < 120; i++) { v.step(H, raw); world.step(); } }
   else d.setSelector('D');

@@ -1,11 +1,7 @@
 import * as THREE from 'three';
 import { LAYER, LAYER_TILE } from './textures.js';
 
-// Shared world materials built on the GPU-baked ground layers (textures.js):
-// rock: triplanar rock albedo + normal at two scales, moss / lichen on the up-facing parts, darker in the
-// cracks (the layers' cavity AO). Used by the boulders, the hut's stone walls and rock outcrops.
-
-const ROCK_PARS = /* glsl */`
+const ROCK_PARS =`
 precision highp sampler2DArray;
 uniform sampler2DArray tAlb, tLNrm;
 uniform float uRockTile, uMossTile, uMoss;
@@ -51,13 +47,11 @@ export function makeRockMaterial(layers, opts = {}) {
   vec4 a2 = triTex(tAlb, p, w, ${LAYER.rock}.0, uRockTile * 0.29);
   vec4 n1 = triTex(tLNrm, p, w, ${LAYER.rock}.0, uRockTile);
   vec3 c = mix(a1.rgb, a2.rgb, 0.4);
-  // moss / grass on top, broken up by the large-scale rock height
   float up = smoothstep(0.55, 0.9, n.y) * uMoss;
   float moss = up * smoothstep(0.35, 0.65, a2.a + (n.y - 0.75));
   rMoss = moss;
   vec4 mc = texture(tAlb, vec3(p.xz * uMossTile, ${LAYER.forest}.0));
   c = mix(c, mc.rgb * vec3(0.8, 1.05, 0.7), moss * 0.85);
-  // detail normal: tangent-space xy of each projection added in its plane (UDN-style blend)
   vec2 tx = (texture(tLNrm, vec3(p.zy * uRockTile, ${LAYER.rock}.0)).xy * 2.0 - 1.0);
   vec2 ty = (texture(tLNrm, vec3(p.xz * uRockTile, ${LAYER.rock}.0)).xy * 2.0 - 1.0);
   vec2 tz = (texture(tLNrm, vec3(p.xy * uRockTile, ${LAYER.rock}.0)).xy * 2.0 - 1.0);

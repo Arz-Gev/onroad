@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "simtest": "node tools/simtest.mjs"
+    "test": "node tools/test/run.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

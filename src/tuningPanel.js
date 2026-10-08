@@ -5,13 +5,6 @@ import { icon } from './icons.js';
 import { theme, rgba } from './theme.js';
 import './tuning.css';
 
-// In-game tuning panel (Tab). The game keeps running: the mouse works the panel, the driving keys
-// still drive. Every change goes straight into the physics (Vehicle.retune); the readouts show what it
-// does to the car (ride frequency, damping, clearance and angles, axle loads, gear speeds, 0-100).
-//
-// Every car has its own setup, saved setups and panel state in localStorage (onroad.tuning.<car>.v1);
-// what the panel shows comes from the car's profile in vehicle/tuning.js (T.ui).
-
 const keyOf = car => `onroad.tuning.${car}.v1`;
 const DEG = Math.PI / 180;
 const get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
@@ -26,11 +19,47 @@ const GEAR_NAMES = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 const LIVE = { range: 'Low range', centreLock: 'Centre lock', rearLock: 'Rear locker', frontLock: 'Front locker', traction: 'Traction ctl', abs: 'ABS', rwd: '2WD' };
 const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['tyres'], susp: ['suspension'], brakes: ['brakes'], mass: ['mass'], steer: ['steering'], body: ['colliders'] };
 
-// slider rows: [path, label, range key, format, hint]
+function lr(key, U, ax) {
+  const truck = !!U.transfer, rear = ax === 'R';
+  const gear = { l: 'выше скорость, слабее тяга', r: 'сильнее тяга, ниже скорость' };
+  const H = {
+    'engine.torque': { l: 'слабее', r: 'сильнее' },
+    'engine.revs': { l: 'отсечка раньше', r: 'отсечка позже' },
+    gear,
+    'gearbox.final': { ...gear, n: truck ? 'С большими колёсами — вправо (4.10–4.75).' : '' },
+    'gearbox.high': gear,
+    'gearbox.low': { l: 'ползёт быстрее', r: 'медленнее, тянет сильнее' },
+    'diff.preload': { l: 'легче поворачивает', r: 'стабильнее, хуже поворачивает' },
+    'diff.power': { l: 'под газом буксует', r: 'под газом держит занос' },
+    'diff.coast': { l: 'без газа легче в поворот', r: 'без газа стабильнее' },
+    'tyres.pressF': truck ? { l: 'цепче вне дороги', r: 'острее руль' } : { l: 'перед цепче', r: 'острее руль, меньше сцепления' },
+    'tyres.pressR': truck ? { l: 'цепче вне дороги', r: 'острее, хуже на камнях' } : { l: 'зад цепче', r: 'зад легче срывается' },
+    'tyres.grip': { l: 'меньше сцепления', r: 'больше сцепления' },
+    'suspension.lift': truck ? { l: 'устойчивее', r: 'выше просвет, легче опрокинуть' } : { l: 'ниже центр масс, тесно в арках', r: 'больше просвет' },
+    'suspension.k': rear ? { l: 'зад цепче, но садится на отбойники', r: 'зад легче уходит в занос' } : { l: 'больше крен, мягче на кочках', r: 'меньше крен, перед сползает' },
+    'suspension.bump': { l: 'мягче на кочках, плавает', r: 'собраннее, удары жёстче' },
+    'suspension.rebound': { l: 'качается после кочек', r: 'не качается, колесо может висеть' },
+    'suspension.arb': rear ? { l: 'больше крен, зад цепче', r: 'зад легче уходит в занос' }
+      : { l: 'больше крен, перед цепче', r: 'меньше крен, перед сползает', n: truck ? 'На камнях лучше 0.' : '' },
+    'suspension.rc': { l: 'больше крен', r: rear ? 'меньше крен, зад раньше срывается' : 'меньше крен, перед раньше сползает' },
+    'suspension.camber': { l: 'внешнее колесо в повороте ровнее, больше бокового сцепления', r: 'ровнее на прямой: тяга и торможение' },
+    'suspension.travel': { l: 'раньше бьёт в отбойник', r: 'колесо выше в арке' },
+    'brakes.force': { l: 'слабее', r: 'сильнее, легче заблокировать' },
+    'brakes.bias': { l: 'больше на зад: может развернуть', r: 'больше на перед: стабильнее' },
+    'brakes.handbrake': { l: 'слабее', r: 'сильнее, легче срывает зад' },
+    'mass.cargo': { l: 'легче', r: 'тяжелее, больше веса на зад' },
+    'mass.roof': { l: 'легче', r: 'тяжелее, легче опрокинуть' },
+    'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
+    'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
+    'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
+    'steering.caster': { l: 'колёса слабее сами идут в занос', r: 'колёса сильнее сами ловят занос, больше развала на угле', n: 'Клавиша руля отпущена: колёса сами поворачиваются туда, куда едет перед. Ещё кастер наклоняет повёрнутое колесо (развал).' },
+  };
+  return H[key] || '';
+}
+
 const sl = (path, label, range, fmt, hint, extra = {}) => ({ type: 'slider', path, label, range, fmt, hint, ...extra });
 
 export class TuningPanel {
-  // api: { vehicle, settings, colliderView, action(id), notify(id, params), redraw() }
   constructor(api, car = 's15') {
     this.api = api;
     this.T = carTuning(car);
@@ -44,12 +73,12 @@ export class TuningPanel {
         if (s.setups && typeof s.setups === 'object') for (const [n, x] of Object.entries(s.setups).slice(0, 40)) this.state.setups[String(n).slice(0, 40)] = this.T.sanitize(x);
         if (s.ui) Object.assign(this.state.ui, s.ui);
       }
-    } catch { /* corrupt: stock */ }
+    } catch { }
     this.stockP = this.T.make();
-    this.runs = [];            // dyno results this session
+    this.runs = [];
     this.dirty = true;
     this.liveT = 0;
-    this.launch = null;        // in-game 0-100 timer
+    this.launch = null;
     this.lastLaunch = null;
   }
 
@@ -57,7 +86,6 @@ export class TuningPanel {
   get setup() { return this.state.setup; }
   save() { storage.set(this.key, JSON.stringify(this.state)); }
 
-  // apply the current setup to the physics. colliders: rebuild the chassis boxes too.
   apply({ snap = false, colliders = true } = {}) {
     const v = this.v, s = this.setup;
     this.T.applySetup(v.P, s);
@@ -69,7 +97,6 @@ export class TuningPanel {
     this.api.redraw?.();
   }
 
-  // ------------------------------------------------------------------ DOM
   build() {
     const el = document.createElement('aside');
     el.className = 'tune';
@@ -112,18 +139,17 @@ export class TuningPanel {
       const r = e.target.closest('input[type=range][data-path]');
       if (r) this.setValue(r.dataset.path, get(this.T.STOCK, r.dataset.path));
     });
-    // keep the driving keys for the truck: buttons and sliders give the focus back after a mouse use
+
     el.addEventListener('pointerup', () => setTimeout(() => {
       const a = document.activeElement;
       if (a && el.contains(a) && !a.matches('input[type=text], textarea, select')) a.blur();
     }, 0));
     el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
-    // the setups menu closes on a click elsewhere or Esc (before the game sees the key)
+
     document.addEventListener('pointerdown', e => { if (!this.menu.hidden && !e.target.closest('.tn-pick')) this.setMenu(false); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !this.menu.hidden) { e.stopPropagation(); e.preventDefault(); this.setMenu(false); } }, true);
   }
 
-  // section definitions: rows + a readout function
   sections() {
     const gearbox = this.api.settings.get('gearbox');
     const box = gearbox === 'manual' ? 'manual' : 'auto';
@@ -133,54 +159,56 @@ export class TuningPanel {
     return [
       { id: 'engine', title: 'Engine', rows: [
         { type: 'engines' },
-        sl('engine.torque', 'Torque', 'engine.torque', v => `×${f2(v)}`, 'Scales the whole torque curve: a tune, more boost, a tired engine.'),
-        sl('engine.revs', 'Rev limiter', 'engine.revs', v => `${f0(this.v.P.engine.limiterRpm)} rpm`, 'Where the engine cuts out. The automatic shifts just below it.'),
+        sl('engine.torque', 'Torque', 'engine.torque', v => `×${f2(v)}`, lr('engine.torque', U)),
+        sl('engine.revs', 'Rev limiter', 'engine.revs', v => `${f0(this.v.P.engine.limiterRpm)} rpm`, lr('engine.revs', U)),
         { type: 'curve' },
       ] },
       { id: 'trans', title: 'Transmission', rows: [
         { type: 'gearbox' },
-        ...ratios.map((r, i) => sl(`gearbox.${box}.${i}`, GEAR_NAMES[i], 'gearbox.ratio', v => f2(v), i === 0 ? 'Gear ratios: higher = more pull, lower top speed in that gear.' : '', { gear: i })),
-        sl(`gearbox.${box}Rev`, 'Reverse', 'gearbox.ratio', f2, ''),
-        sl('gearbox.final', 'Final drive', 'gearbox.final', f2, U.transfer ? 'Axle ratio. 4.10 or 4.75 is the usual fix for big tyres.' : 'Axle ratio. Shorter (higher) keeps a drift in the power band on a tight track.'),
+        ...ratios.map((r, i) => sl(`gearbox.${box}.${i}`, GEAR_NAMES[i], 'gearbox.ratio', v => f2(v), lr('gear', U), { gear: i })),
+        sl(`gearbox.${box}Rev`, 'Reverse', 'gearbox.ratio', f2, lr('gear', U)),
+        sl('gearbox.final', 'Final drive', 'gearbox.final', f2, lr('gearbox.final', U)),
         ...(U.transfer ? [
-          sl('gearbox.high', 'Transfer high', 'gearbox.high', v => v.toFixed(3), ''),
-          sl('gearbox.low', 'Transfer low', 'gearbox.low', f2, 'Low range: a bigger number crawls slower and climbs harder.'),
+          sl('gearbox.high', 'Transfer high', 'gearbox.high', v => v.toFixed(3), lr('gearbox.high', U)),
+          sl('gearbox.low', 'Transfer low', 'gearbox.low', f2, lr('gearbox.low', U)),
         ] : []),
         { type: 'gears' },
         { type: 'live' },
       ] },
       ...(U.diff ? [{ id: 'diff', title: 'Differential', rows: [
         { type: 'chips', path: 'diff.type', label: 'Rear diff', str: true, options: [['welded', 'Welded'], ['lsd', 'LSD'], ['open', 'Open']], hint: 'Welded: both rear wheels always turn together, the easiest drift. LSD: locks with the torque. Open: one wheel spins.' },
-        sl('diff.preload', 'LSD preload', 'diff.preload', v => `${f0(v)} Nm`, 'Locking torque with no throttle.'),
-        sl('diff.power', 'LSD power', 'diff.power', v => `${Math.round(v * 100)} %`, 'How hard it locks on throttle.'),
-        sl('diff.coast', 'LSD coast', 'diff.coast', v => `${Math.round(v * 100)} %`, 'How hard it locks off throttle: 1.5-way below power, 2-way equal.'),
+        sl('diff.preload', 'LSD preload', 'diff.preload', v => `${f0(v)} Nm`, lr('diff.preload', U)),
+        sl('diff.power', 'LSD power', 'diff.power', v => `${Math.round(v * 100)} %`, lr('diff.power', U)),
+        sl('diff.coast', 'LSD coast', 'diff.coast', v => `${Math.round(v * 100)} %`, lr('diff.coast', U)),
       ] }] : []),
       { id: 'tyres', title: 'Wheels and tyres', rows: [
         { type: 'chips', path: 'tyres.size', label: 'Tyre size', options: ty.sizes.map(x => [x, x + '″']), hint: `Taller tyres lift the whole ${noun} and gear it taller. Watch the arches.` },
         { type: 'chips', path: 'tyres.width', label: 'Width', options: ty.widths.map(x => [x, String(x)]) },
-        sl('tyres.pressF', 'Pressure front', 'tyres.press', press, U.transfer ? 'Lower: bigger footprint, more grip off-road, softer ride. [ ] change both.' : 'Lower: a softer, more forgiving slide. Higher: sharper response, less grip.'),
-        sl('tyres.pressR', 'Pressure rear', 'tyres.press', press, ''),
-        sl('tyres.grip', 'Compound grip', 'tyres.grip', v => `×${f2(v)}`, U.transfer ? 'Grip on every surface. Mud terrain = 1.' : 'Grip on every surface. Street tyres = 1; drifters often run less at the rear.'),
+        sl('tyres.pressF', 'Pressure front', 'tyres.press', press, lr('tyres.pressF', U)),
+        sl('tyres.pressR', 'Pressure rear', 'tyres.press', press, lr('tyres.pressR', U)),
+        sl('tyres.grip', 'Compound grip', 'tyres.grip', v => `×${f2(v)}`, lr('tyres.grip', U)),
       ] },
       { id: 'susp', title: 'Suspension', rows: [
-        sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), U.transfer ? 'Longer springs: more ground clearance and room in the arches, higher centre of mass.' : 'Lower: less roll and a lower centre of mass, less travel before the bump stops.'),
-        ...['k', 'bump', 'rebound', 'arb', 'travel'].flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel' }[k]} ${n}`, 'suspension.' + k,
-          v => (k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`,
-          n === 'F' ? { k: 'Stiffer: less roll and pitch, harsher on bumps.', bump: 'Damping on the way up (compression).', rebound: `Damping on the way down: too little and the ${noun} keeps bouncing.`, arb: 'Roll stiffness only. Stiffer at the rear: more oversteer.', travel: 'How far the wheel can rise before the hard stop.' }[k] : ''))),
+        { type: 'suspview' },
+        sl('suspension.lift', U.lift, 'suspension.lift', v => (v > 0 ? '+' : v < 0 ? '−' : '') + cm(Math.abs(v)), lr('suspension.lift', U)),
+        ...['k', 'bump', 'rebound', 'arb', 'travel', 'rc', 'camber'].filter(k => this.setup.suspension.front[k] !== undefined).flatMap(k => AXLES.map(([ax, n]) => sl(`suspension.${ax}.${k}`, `${{ k: 'Spring', bump: 'Bump damping', rebound: 'Rebound damping', arb: 'Anti-roll bar', travel: 'Bump travel', rc: 'Roll centre', camber: 'Camber' }[k]} ${n}`, 'suspension.' + k,
+          v => (k === 'camber' ? `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}°` : k === 'rc' ? sgnCm(v) : k === 'travel' ? cm(v) : `${kN(v)}${k === 'k' ? 'N/m' : k === 'arb' ? 'N·m/rad' : 'N·s/m'}`) + (k === 'camber' || k === 'rc' ? '' : ` · ${pct(v, this.T.STOCK.suspension[ax][k])}`),
+          lr('suspension.' + k, U, n)))),
       ] },
       { id: 'brakes', title: 'Brakes', rows: [
-        sl('brakes.force', 'Brake force', 'brakes.force', v => `×${f2(v)}`, ''),
-        sl('brakes.bias', 'Front share', 'brakes.bias', v => `${Math.round(v * 100)} %`, 'More front: stable, the front locks first. More rear: the rear locks first and it spins (with ABS off).'),
-        sl('brakes.handbrake', 'Handbrake', 'brakes.handbrake', v => `×${f2(v)}`, ''),
+        sl('brakes.force', 'Brake force', 'brakes.force', v => `×${f2(v)}`, lr('brakes.force', U)),
+        sl('brakes.bias', 'Front share', 'brakes.bias', v => `${Math.round(v * 100)} %`, lr('brakes.bias', U)),
+        sl('brakes.handbrake', 'Handbrake', 'brakes.handbrake', v => `×${f2(v)}`, lr('brakes.handbrake', U)),
       ] },
       { id: 'mass', title: 'Mass', rows: [
-        sl('mass.cargo', U.cargo, 'mass.cargo', v => `${f0(v)} kg`, U.roof ? 'In the load bay behind the rear seats.' : 'In the spare-wheel well: more weight on the rear tyres.'),
-        ...(U.roof ? [sl('mass.roof', 'Roof load', 'mass.roof', v => `${f0(v)} kg`, 'On the rack: high up, it rolls the truck over sooner.')] : []),
-        sl('mass.comY', 'Centre of mass', 'mass.comY', v => sgnCm(v), 'Moves the body\'s centre of mass up or down.'),
+        sl('mass.cargo', U.cargo, 'mass.cargo', v => `${f0(v)} kg`, lr('mass.cargo', U)),
+        ...(U.roof ? [sl('mass.roof', 'Roof load', 'mass.roof', v => `${f0(v)} kg`, lr('mass.roof', U))] : []),
+        sl('mass.comY', 'Centre of mass', 'mass.comY', v => sgnCm(v), lr('mass.comY', U)),
       ] },
       { id: 'steer', title: 'Steering', rows: [
-        sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, U.transfer ? 'Road-wheel angle at full lock: a tighter turning circle.' : 'Road-wheel angle at full lock. An angle kit (55–70°) holds deeper drifts.'),
-        sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, 'Lower = quicker steering (turns of the wheel per angle).'),
+        sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, lr('steering.lock', U)),
+        sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, lr('steering.ratio', U)),
+        sl('steering.caster', 'Caster', 'steering.caster', v => `${f1(v)}°`, lr('steering.caster', U)),
       ] },
       { id: 'body', title: 'Body and colliders', rows: [{ type: 'colliders' }] },
       { id: 'measure', title: 'Measure', rows: [{ type: 'dyno' }] },
@@ -209,7 +237,7 @@ export class TuningPanel {
       return `<div class="tn-row" data-row="${r.path}">
         <div class="tn-l"><span>${r.label}</span><output></output></div>
         <div class="tn-rng"><input type="range" min="${min}" max="${max}" step="${step}" data-path="${r.path}" aria-label="${escapeHTML(r.label)}" title="Double-click: stock"><i style="left:${tick}%"></i></div>
-        ${r.hint ? `<div class="tn-h">${r.hint}</div>` : ''}</div>`;
+        ${r.hint ? this.hintHTML(r.hint) : ''}</div>`;
     }
     if (r.type === 'chips') return `<div class="tn-row" data-row="${r.path}"><div class="tn-l"><span>${r.label}</span><output></output></div>
       <div class="tn-chips">${r.options.map(([v, l]) => `<button type="button" data-chip="${r.path}" data-v="${v}">${l}</button>`).join('')}</div>${r.hint ? `<div class="tn-h">${r.hint}</div>` : ''}</div>`;
@@ -222,11 +250,16 @@ export class TuningPanel {
       <div class="tn-h">The same switches as the keys. Low range and 2WD need a stop.</div></div>`;
     if (r.type === 'colliders') return `<div class="tn-row">
         <div class="tn-l"><span>Show physics</span><button type="button" class="switch" data-act="overlay" role="switch" aria-label="Show physics"><span class="knob"></span></button></div>
-        <div class="tn-h">Collision boxes (red where they touch), wheel side cylinders, tyres against the arch tops, suspension travel (orange: bump stop) and the tyre contact patches (size: load, colour: slip).</div>
+        <div class="tn-h">Collision boxes (red where they touch), wheel side cylinders, suspension travel (orange: bump stop) and the tyre contact patches (size: load, colour: slip).</div>
         <div class="tn-touch"></div>
       </div>
       <div class="tn-row"><div class="tn-l"><span>Collision boxes</span></div><div class="tn-chips tn-boxes"></div></div>
       <div class="tn-boxed"></div>`;
+    if (r.type === 'suspview') return `<div class="tn-row">
+        <div class="tn-l"><span>Show suspension</span><button type="button" class="switch" data-act="suspview" role="switch" aria-label="Show suspension"><span class="knob"></span></button></div>
+        <div class="tn-h">Ход подвески, амортизаторы, центры крена (оранжевые шары), центр масс (белый шар) и пятна контакта: размер — нагрузка на колесо, белое кольцо — нагрузка в покое, цвет — проскальзывание. Без коробок столкновений.</div>
+        <div class="tn-susplive"></div>
+      </div>`;
     if (r.type === 'dyno') return `<div class="tn-row">
         <div class="tn-h">Runs the real physics (this ${this.T.ui.noun}, this setup, this gearbox) on a flat ${this.T.C.surfaceName} pad: full throttle from a standstill to 100 km/h.</div>
         <div class="tn-dynobar"><button type="button" class="tn-b primary" data-act="dyno">${icon('gauge')}0–100</button><span class="tn-dynost"></span></div>
@@ -237,7 +270,11 @@ export class TuningPanel {
     return '';
   }
 
-  // collider editor for the selected box
+  hintHTML(h) {
+    if (typeof h === 'string') return `<div class="tn-h">${h}</div>`;
+    return `<div class="tn-h tn-lr"><span>← ${h.l}</span><span>${h.r} →</span></div>${h.n ? `<div class="tn-h">${h.n}</div>` : ''}`;
+  }
+
   renderBoxEditor() {
     const cols = this.setup.colliders, i = this.state.ui.sel;
     const chips = this.el.querySelector('.tn-boxes');
@@ -255,7 +292,6 @@ export class TuningPanel {
   }
 
   renderSetups() {
-    // Stock is always listed; a setup that matches no entry shows as an unpickable "Custom" line
     const names = Object.keys(this.state.setups), cur = this.matchName();
     this.sel.querySelector('span').textContent = cur || 'Custom (unsaved)';
     this.sel.classList.toggle('custom', !cur);
@@ -274,7 +310,6 @@ export class TuningPanel {
     return '';
   }
 
-  // ------------------------------------------------------------------ events
   setValue(path, v) {
     if (!Number.isFinite(+v)) return;
     set(this.setup, path, +v);
@@ -294,7 +329,7 @@ export class TuningPanel {
     else if (t.dataset.boxK !== undefined) {
       const i = this.state.ui.sel, j = +t.dataset.boxK, box = this.setup.colliders[i].box;
       let v = +t.value;
-      if (j >= 3 && j <= 5) v /= 2;   // the slider shows the full size, the box stores half sizes
+      if (j >= 3 && j <= 5) v /= 2;
       box[j] = v;
       box[6] = Math.min(box[6], box[3] - 0.005, box[4] - 0.005, box[5] - 0.005);
       this.changed('colliders');
@@ -390,6 +425,12 @@ export class TuningPanel {
       this.save(); this.dirty = true;
       return;
     }
+    if (d.act === 'suspview') {
+      this.state.ui.suspView = !this.state.ui.suspView;
+      this.api.colliderView.setSusp(this.state.ui.suspView);
+      this.save(); this.dirty = true; this.refreshLive();
+      return;
+    }
     if (d.box !== undefined) {
       const i = +d.box;
       this.state.ui.sel = this.state.ui.sel === i ? -1 : i;
@@ -452,18 +493,17 @@ export class TuningPanel {
     else { this.setMenu(false); if (this.el.contains(document.activeElement)) document.activeElement.blur(); }
   }
 
-  // ------------------------------------------------------------------ readouts
   refresh(force = false) {
     if (!this.open || (!this.dirty && !force)) return;
     this.dirty = false;
     const v = this.v, P = v.P, s = this.setup, el = this.el, U = this.T.ui, ty = this.T.tyre;
     const gearbox = this.api.settings.get('gearbox');
-    // the gearbox decides which ratio sliders exist (M switches it with the panel open)
+
     if (this._gb !== gearbox) { const first = this._gb === undefined; this._gb = gearbox; if (!first) { const y = this.scroll.scrollTop; this.buildSections(); this.scroll.scrollTop = y; } }
     const A = this.an = analyze(P, s, gearbox);
     if (!this.stockAn || this.stockAn.gb !== gearbox) { this.stockAn = analyze(this.T.applySetup(this.T.make(), clone(this.T.STOCK)), this.T.STOCK, gearbox); this.stockAn.gb = gearbox; }
     const S = this.stockAn;
-    // sliders, chips, outputs
+
     for (const r of el.querySelectorAll('input[type=range][data-path]')) {
       const val = get(s, r.dataset.path);
       if (+r.value !== val) r.value = val;
@@ -478,14 +518,14 @@ export class TuningPanel {
     if (sz) sz.textContent = `${s.tyres.size}×${s.tyres.width}  ·  ${Math.round(this.T.tyreRadius(s.tyres.size) * 2000)} mm · ${Math.round(this.T.wheelMass(s.tyres.size, s.tyres.width))} kg`;
     const en = el.querySelector('.tn-engnote');
     if (en) en.textContent = this.T.ENGINES[s.engine.preset].note;
-    // summary strip
+
     const t100 = A.accel.t100;
     this.sum.innerHTML = [
       ['Power', `${f0(A.engine.hp)} hp`], ['0–100', t100 ? `≈ ${f1(t100)} s` : '—'], ['Top', `${f0(A.vmax)} km/h`],
       ['Weight', `${f0(A.mass)} kg`], ['F / R', `${f0(A.front * 100)} / ${f0(100 - A.front * 100)}`],
       U.offroadGeo ? ['Approach', `${f0(A.geo.approach)}°`] : ['Lock', `${f0(s.steering.lock)}°`],
     ].map(([k, x]) => `<div><span>${k}</span><b>${x}</b></div>`).join('');
-    // section summaries + readouts
+
     const ro = (id, html) => { const n = el.querySelector(`[data-ro="${id}"]`); if (n) n.innerHTML = html; };
     const ss = (id, txt) => { const n = el.querySelector(`[data-sec="${id}"] .tn-ss`); if (n) n.textContent = txt; };
     const kv = items => `<div class="tn-kv">${items.filter(Boolean).map(([k, x, cls = '']) => `<div class="${cls}"><span>${k}</span><b>${x}</b></div>`).join('')}</div>`;
@@ -548,6 +588,8 @@ export class TuningPanel {
     ]) : '');
     const ov = el.querySelector('[data-act=overlay]');
     if (ov) ov.setAttribute('aria-checked', !!this.state.ui.overlay);
+    const sv = el.querySelector('[data-act=suspview]');
+    if (sv) sv.setAttribute('aria-checked', !!this.state.ui.suspView);
     if (el.querySelector('.tn-boxes') && !el.querySelector('.tn-boxes').childElementCount) this.renderBoxEditor();
     const i = this.state.ui.sel, box = s.colliders[i]?.box;
     if (box) for (const r of el.querySelectorAll('input[data-box-k]')) {
@@ -556,7 +598,7 @@ export class TuningPanel {
       r.closest('.tn-row').querySelector('output').textContent = `${Math.round(val * 1000) / 10} cm`;
     }
     ss('measure', this.runs.length && this.runs[0].t100 ? `${f2(this.runs[0].t100)} s` : '');
-    // a section's "stock" button shows only once something in it differs from stock
+
     for (const [id, keys] of Object.entries(SECT)) {
       const n = el.querySelector(`[data-sec="${id}"]`);
       if (n) n.classList.toggle('mod', keys.some(k => JSON.stringify(s[k]) !== JSON.stringify(this.T.STOCK[k])));
@@ -571,7 +613,6 @@ export class TuningPanel {
     return this._defs[path];
   }
 
-  // driveline switches and the collider contact list, 5 times a second while open
   refreshLive() {
     const d = this.v.drivetrain, v = this.v, el = this.el;
     const st = { range: d.range === 'low', centreLock: d.centerLock, rearLock: d.rearLock, frontLock: d.frontLock, traction: v.tc, abs: v.abs, rwd: d.rwd };
@@ -586,8 +627,38 @@ export class TuningPanel {
         if (tc.innerHTML !== html) tc.innerHTML = html;
       }
     }
+    const sl = el.querySelector('.tn-susplive');
+    if (sl) { const h = this.suspLiveHTML(); if (sl.innerHTML !== h) sl.innerHTML = h; }
     const ln = el.querySelector('.tn-launch');
     if (ln) { const h = this.lastLaunch ? `Your last launch in the game: <b>0–100 in ${f1(this.lastLaunch.t100)} s</b> (${escapeHTML(this.lastLaunch.label)})` : 'Floor it from a standstill: the panel times your own 0–100 too.'; if (ln.innerHTML !== h) ln.innerHTML = h; }
+  }
+
+  suspLiveHTML() {
+    const cs = this.api.colliderView?.corners;
+    if (!this.state.ui.suspView || !cs || cs.length < 4) return '';
+    const v = this.v, k1 = x => (x / 1000).toFixed(1), sg = (x, d) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+    const cell = (c, f) => `<td${c.onStop ? ' class="bad"' : c.topped ? ' class="warn"' : ''}>${f(c)}</td>`;
+    const row = (label, f, plain) => `<tr><td>${label}</td>${cs.map(c => plain ? `<td>${f(c)}</td>` : cell(c, f)).join('')}</tr>`;
+    const tbl = `<table><tr><th></th><th>FL</th><th>FR</th><th>RL</th><th>RR</th></tr>
+      ${row('Travel cm', c => `${(c.comp * 100).toFixed(1)}<em>${Math.round(Math.max(0, c.comp) / c.travel * 100)}%</em>`)}
+      ${row('Speed m/s', c => sg(c.rate, 2), true)}
+      ${row('Spring kN', c => k1(c.spring), true)}
+      ${row('Damper kN', c => sg(c.damper / 1000, 1), true)}
+      ${row('Bar kN', c => sg(c.bar / 1000, 2), true)}
+      ${row('Tyre kN', c => `${k1(c.load)}<em>${c.load > 0 ? pct(c.load, c.staticLoad) : 'air'}</em>`, true)}
+    </table>`;
+    const L = cs.reduce((a, c) => a + c.load, 0) || 1;
+    const fr = (cs[0].load + cs[1].load) / L, lr = (cs[0].load + cs[2].load) / L;
+    const deg = i => `${sg(v.axleRoll(i) / DEG, 1)}°`;
+    const stops = cs.map((c, i) => c.onStop ? ['FL', 'FR', 'RL', 'RR'][i] : null).filter(Boolean);
+    const tops = cs.map((c, i) => c.topped ? ['FL', 'FR', 'RL', 'RR'][i] : null).filter(Boolean);
+    const note = stops.length ? `<span class="bad">${stops.join(' ')}</span>` : tops.length ? `<span class="warn">droop ${tops.join(' ')}</span>` : 'none';
+    return tbl + `<div class="tn-kv">
+      <div><span>Axle roll F / R</span><b>${deg(0)} / ${deg(1)}</b></div>
+      <div><span>Load F / R</span><b>${f0(fr * 100)} / ${f0(100 - fr * 100)} %</b></div>
+      <div><span>Load L / R</span><b>${f0(lr * 100)} / ${f0(100 - lr * 100)} %</b></div>
+      <div><span>On the bump stops</span><b>${note}</b></div>
+    </div><div class="tn-h">Travel: compression from full droop (% of the travel). Speed: + bump, − rebound. Axle roll: suspension roll against the body (+ right side compressed). Tyre: load now against static.</div>`;
   }
 
   drawCurve() {
@@ -609,7 +680,6 @@ export class TuningPanel {
     g.fillStyle = theme.cool; const tx = `${Math.round(maxW / 1.1)} kW`; g.fillText(tx, W - g.measureText(tx).width - 4, 22);
   }
 
-  // ------------------------------------------------------------------ 0-100 measurement
   runDyno() {
     if (this.dynoBusy) return;
     const gearbox = this.api.settings.get('gearbox');
@@ -660,15 +730,13 @@ export class TuningPanel {
     list.innerHTML = this.runs.map((r, i) => `<div><i style="background:${cols[i]}"></i>${escapeHTML(r.label)} <b>${r.t100 ? f2(r.t100) + ' s' : '—'}</b></div>`).join('');
   }
 
-  // ------------------------------------------------------------------ per frame (cheap when closed)
   update(dt, vehicle, raw) {
-    // the [ ] keys change the tyre pressures: keep the setup (and its save) in step
     const ps = vehicle.pressures, ts = this.setup.tyres;
     if (ps[0] !== ts.pressF || ps[1] !== ts.pressR) { ts.pressF = ps[0]; ts.pressR = ps[1]; this.save(); this.dirty = true; }
-    // the lockers key cycles the rear diff of a RWD car: the setup follows
+
     const df = this.setup.diff, rd = vehicle.drivetrain.rearDiff;
     if (df && vehicle.drivetrain.fixedRwd && rd !== df.type) { df.type = rd; this.save(); this.dirty = true; }
-    // in-game launch timer (always on: it only reads a few numbers)
+
     const kmh = vehicle.speed * 3.6;
     if (Math.abs(kmh) < 0.5 && raw.throttle < 0.05) this.launch = { armed: true, t: 0 };
     else if (this.launch?.armed) {

@@ -4,24 +4,12 @@ import { MAP_SIZE, CELL, N, SURF, FAR_SIZE, FAR_CELL } from './terrain.js';
 import { bakeGroundLayers, LAYER_TILE } from './textures.js';
 import { makeSimplex2D, fbm } from './noise.js';
 
-// Terrain renderer: CDLOD (continuous distance-dependent level of detail) over the 1 km physics map and
-// the 8 km render-only vista, drawn as one instanced grid patch.
-// - Patches are 32x32 quads; level k has a vertex spacing of 0.5 * 2^k m. The CPU walks a quadtree each
-//   frame (frustum culled, ~150-300 patches) and writes one instance per patch.
-// - The vertex shader reads heights straight from the physics heightfield (R32F texture). At level 0 the
-//   triangles use the same cell split as Rapier, so wheels sit exactly on what you see. Odd vertices
-//   morph towards the next level near each range limit, so there are no cracks or pops.
-// - Lighting uses a per-pixel normal texture (computed on the GPU from the heights), so far patches keep
-//   the full-resolution shading.
-// - Material: six GPU-baked ground layers (texture arrays) blended by the surface map, slope, forest
-//   canopy and height, with two-scale anti-tiling, triplanar rock on steep faces and distance LOD.
-
-const P = 32;                         // quads per patch side
-const LEVELS = 10;                    // 16 m ... 8192 m patches
+const P = 32;
+const LEVELS = 10;
 const HALF = MAP_SIZE / 2, NN = N + 1;
 const FAR_HALF = FAR_SIZE / 2, FN = FAR_SIZE / FAR_CELL + 1;
 
-const NORMAL_FRAG = /* glsl */`
+const NORMAL_FRAG =`
 precision highp float;
 uniform highp sampler2D tH;
 uniform float uN, uCell, uSwap;
@@ -32,7 +20,6 @@ void main() {
   float dx = h(g + ivec2(1, 0)) - h(g - ivec2(1, 0));
   float dz = h(g + ivec2(0, 1)) - h(g - ivec2(0, 1));
   vec3 n = normalize(vec3(-dx, 2.0 * uCell, -dz));
-  // curvature (positive in hollows): used for ambient occlusion of gullies
   float c = h(g + ivec2(2, 0)) + h(g - ivec2(2, 0)) + h(g + ivec2(0, 2)) + h(g - ivec2(0, 2)) - 4.0 * h(g);
   gl_FragColor = vec4(n.x * 0.5 + 0.5, n.z * 0.5 + 0.5, clamp(c / (uCell * 4.0) + 0.5, 0.0, 1.0), 1.0);
 }`;
@@ -58,7 +45,6 @@ function floatTex(data, n) {
   return t;
 }
 
-// separable box blur with running sums (O(1) per texel whatever the radius), in place over n x n x c
 function boxBlur(src, n, ch, r) {
   const tmp = new Float32Array(src.length);
   for (let pass = 0; pass < 2; pass++) {
@@ -77,7 +63,6 @@ function boxBlur(src, n, ch, r) {
   return src;
 }
 
-// the same box blur on 8-bit data, in place, all channels per texel (cache-friendly), integer running sums
 function blurU8(data, n, ch, r) {
   const tmp = new Uint8Array(data.length);
   const w = 2 * r + 1, line = new Int32Array((n + 2 * r + 1) * ch);
@@ -106,16 +91,14 @@ function blurU8(data, n, ch, r) {
 export function buildTerrainView(terrain, renderer, opts = {}) {
   const layers = bakeGroundLayers(renderer, opts.layerSize || 1024, opts.anisotropy || 8);
 
-  // ---- height textures (data layout ix * n + iz: the shader swaps the fetch coordinates)
   const hTex = floatTex(terrain.heights, NN);
-  // linear filtering lets the grass read a smooth height with one fetch (texelFetch ignores it)
+
   const floatLinear = !!renderer.extensions.has('OES_texture_float_linear');
   if (floatLinear) { hTex.magFilter = THREE.LinearFilter; hTex.minFilter = THREE.LinearFilter; }
   const fTex = floatTex(terrain.far.heights, FN);
   const nTex = bakeNormalTexture(renderer, hTex, NN, CELL);
   const fnTex = bakeNormalTexture(renderer, fTex, FN, FAR_CELL);
 
-  // ---- splat (dirt, mud, rock, sand), blurred; texel (ix, iz) natural orientation
   const splatData = new Uint8Array(NN * NN * 4);
   for (let ix = 0; ix < NN; ix++) for (let iz = 0; iz < NN; iz++) {
     const s = terrain.surface[ix * NN + iz];
@@ -128,7 +111,6 @@ export function buildTerrainView(terrain, renderer, opts = {}) {
   splat.magFilter = THREE.LinearFilter; splat.minFilter = THREE.LinearMipmapLinearFilter; splat.generateMipmaps = true;
   splat.needsUpdate = true;
 
-  // ---- ground data at 1 m: r = ambient occlusion (hollows, under canopy), g = forest floor, b = wetness, a = grass density
   const DN = MAP_SIZE + 1;
   const groundData = new Uint8Array(DN * DN * 4);
   {
@@ -140,7 +122,7 @@ export function buildTerrainView(terrain, renderer, opts = {}) {
       groundData[i * 4] = Math.round(255 * Math.max(0.45, 1 - cav));
       groundData[i * 4 + 1] = 0; groundData[i * 4 + 2] = 0;
     }
-    // grass density: grass surfaces only (from the blurred splat), thinning on slopes, natural clearings
+
     const clr = makeSimplex2D(4711);
     for (let x = 0; x < DN; x++) for (let z = 0; z < DN; z++) {
       const ix = Math.min(N, x * 2), iz = Math.min(N, z * 2);
@@ -155,7 +137,7 @@ export function buildTerrainView(terrain, renderer, opts = {}) {
       d *= Math.max(0, Math.min(1, (c + 0.45) / 0.35));
       groundData[(z * DN + x) * 4 + 3] = Math.round(255 * d);
     }
-    // wetness next to water (only around the water bodies; waterLevelAt is too slow for 1 M texels)
+
     const wetAt = (x, z, wl) => {
       if (x < 0 || z < 0 || x >= DN || z >= DN) return;
       const o = (z * DN + x) * 4 + 2, h = hgt[z * DN + x];
@@ -177,7 +159,6 @@ export function buildTerrainView(terrain, renderer, opts = {}) {
   dataTex.magFilter = THREE.LinearFilter; dataTex.minFilter = THREE.LinearMipmapLinearFilter; dataTex.generateMipmaps = true;
   dataTex.needsUpdate = true;
 
-  // ---- patch geometry: (P+1)^2 grid of integer coordinates, Rapier's diagonal (x1,z0)-(x0,z1)
   const V = P + 1;
   const pos = new Float32Array(V * V * 3);
   for (let i = 0; i < V; i++) for (let j = 0; j < V; j++) { const o = (i * V + j) * 3; pos[o] = i; pos[o + 1] = 0; pos[o + 2] = j; }
@@ -196,7 +177,6 @@ export function buildTerrainView(terrain, renderer, opts = {}) {
   geo.instanceCount = 0;
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
 
-  // ---- material
   const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
   const morph = Array.from({ length: LEVELS }, () => new THREE.Vector2());
   const uniforms = {
@@ -260,10 +240,9 @@ uniform vec2 uTrackOrigin;
 varying vec3 vWPos;
 varying float vMorph;
 float gRough; float gAO; vec3 gN; float gWet;
-vec2 gDx, gDy;   // screen derivatives of the world xz (taken in uniform control flow)
+vec2 gDx, gDy;
 vec3 gDpx, gDpy;
 vec4 layerTex(sampler2DArray t, vec2 uv, float l, mat2 m) { return textureGrad(t, vec3(uv, l), m * gDx, m * gDy); }
-// two scales of one layer: the large, rotated one hides tiling at a distance
 void layerAt(float l, vec2 xz, float far, out vec4 alb, out vec4 nrm) {
   float tile = uTile[int(l)];
   mat2 mA = mat2(tile, 0.0, 0.0, tile);
@@ -299,15 +278,12 @@ vec3 triRock(vec3 p, vec3 n, out vec4 nrmOut) {
   gDx = gDpx.xz; gDy = gDpy.xz;
   float dist = length(p - cameraPosition);
   bool inMap = max(abs(p.x), abs(p.z)) < uMap.x;
-  // heightfield normal + curvature, surface splat, ground data (sampled unconditionally: mip selection needs uniform flow)
   vec2 uvN = ((p.xz + uMap.x) / uMap.y + 0.5) / uMap.z;
   vec4 ntN = texture2D(tNrm, uvN);
   vec4 sp = texture2D(tSplat, uvN);
   vec4 gd = texture2D(tData, (p.xz + uMap.x + 0.5) / (uMap.w + 1.0));
   vec4 nt = ntN;
   if (!inMap) {
-    // vista: its own normal map (explicit gradients: this is non-uniform control flow) plus procedural
-    // detail normals (its heightmap is only 16 m)
     vec2 uvF = ((p.xz + uFar.x) / uFar.y + 0.5) / uFar.z;
     nt = textureGrad(tFarNrm, uvF, gDx / (uFar.y * uFar.z), gDy / (uFar.y * uFar.z));
     sp = vec4(0.0); gd = vec4(1.0, 0.0, 0.0, 1.0);
@@ -319,11 +295,9 @@ vec3 triRock(vec3 p, vec3 n, out vec4 nrmOut) {
     vec4 dz1 = textureGrad(tNoise, p.xz / 41.0, gDx / 41.0, gDy / 41.0), dz2 = textureGrad(tNoise, p.xz / 13.0 + 0.5, gDx / 13.0, gDy / 13.0);
     nG = normalize(nG + vec3(dz1.r - 0.5, 0.0, dz1.g - 0.5) * 0.7 + vec3(dz2.b - 0.5, 0.0, dz2.a - 0.5) * 0.35);
   }
-  // macro variation (large scale) to break everything up
   float mac = texture2D(tNoise, p.xz / 420.0).r;
   float mac2 = texture2D(tNoise, p.xz / 97.0 + 0.3).g;
   float far = smoothstep(18.0, 90.0, dist);
-  // layer weights
   float slope = 1.0 - nG.y;
   float wRock = max(sp.b, smoothstep(0.24, 0.36, slope + (mac2 - 0.5) * 0.08));
   float wMud = sp.g, wSand = sp.a, wDirt = sp.r;
@@ -331,7 +305,6 @@ vec3 triRock(vec3 p, vec3 n, out vec4 nrmOut) {
   float wForest = gd.g * (1.0 - wDirt) * (1.0 - wMud);
   if (!inMap) wForest = smoothstep(0.35, 0.65, mac2) * smoothstep(0.32, 0.18, slope) * smoothstep(260.0, 120.0, p.y);
   float wGrass = max(0.0, 1.0 - wDirt - wMud - wSand - wForest);
-  // the two strongest layers, height-blended (more would cost registers and samples for little gain)
   float w1 = wGrass, l1 = 0.0, w2 = 0.0, l2 = 0.0;
   #define TOP2(W, L) if (W > w1) { w2 = w1; l2 = l1; w1 = W; l1 = L; } else if (W > w2) { w2 = W; l2 = L; }
   TOP2(wDirt, 1.0) TOP2(wMud, 3.0) TOP2(wSand, 4.0) TOP2(wForest, 5.0)
@@ -347,12 +320,10 @@ vec3 triRock(vec3 p, vec3 n, out vec4 nrmOut) {
       c = mix(a1.rgb, a2.rgb, k); nn = mix(n1, n2, k);
     } else { c = a1.rgb; nn = n1; }
   } else {
-    // far away: average layer colours
     c = vec3(0.075, 0.105, 0.035) * wGrass + vec3(0.17, 0.12, 0.075) * wDirt + vec3(0.06, 0.045, 0.03) * wMud + vec3(0.3, 0.27, 0.2) * wSand + vec3(0.045, 0.06, 0.025) * wForest;
     c /= max(1e-3, wGrass + wDirt + wMud + wSand + wForest);
     nn = vec4(0.5, 0.5, 0.9, 1.0);
   }
-  // rock (triplanar on steep faces)
   if (wRock > 0.01) {
     vec4 rn; vec3 rc;
     if (dist > 600.0) { rc = vec3(0.2, 0.19, 0.17); rn = vec4(0.5, 0.5, 0.85, 1.0); }
@@ -360,24 +331,18 @@ vec3 triRock(vec3 p, vec3 n, out vec4 nrmOut) {
     else { vec4 ra; layerAt(2.0, p.xz, far, ra, rn); rc = ra.rgb; }
     c = mix(c, rc, wRock); nn = mix(nn, rn, wRock);
   }
-  // vista snow on high flats
   if (!inMap) {
     float snow = smoothstep(uSnow, uSnow + 60.0, p.y + (mac - 0.5) * 80.0) * smoothstep(0.55, 0.3, slope);
     c = mix(c, vec3(0.62, 0.64, 0.68), snow);
   }
-  // macro tint: dry / lush patches, brightness
   c *= mix(vec3(1.08, 1.02, 0.86), vec3(0.9, 1.0, 1.04), mac) * (0.86 + 0.28 * mac2);
-  // tyre tracks darken (and wet) the ground
   vec2 tuv = (p.xz - uTrackOrigin) / uTrackSize + 0.5;
   float track = inMap ? texture2D(uTrack, tuv).r : 0.0;
   c *= 1.0 - track * 0.3;
-  // wetness: shore, mud, rain
   gWet = clamp(max(gd.b * 0.9, uWet) + wMud * 0.4 + track * wMud * 0.4, 0.0, 1.0);
   c *= 1.0 - gWet * 0.35;
   gRough = mix(nn.b, 0.55, gWet);
-  // ambient occlusion: hollows, canopy, texture cavities
   gAO = gd.r * mix(1.0, nn.a, 0.8) * clamp(1.15 - curv * 0.3, 0.6, 1.0);
-  // normal: detail (tangent space x/z) on top of the heightfield normal
   vec2 dn = (nn.xy * 2.0 - 1.0) * (1.0 - smoothstep(30.0, 140.0, dist));
   gN = normalize(nG + vec3(dn.x, 0.0, dn.y) * 0.9);
   diffuseColor.rgb *= c;
@@ -401,8 +366,7 @@ reflectedLight.indirectSpecular *= gAO;`);
   mesh.matrixAutoUpdate = false;
   mesh.userData.material = material;
 
-  // ---- min/max height pyramid at 16 m cells for culling
-  const L0 = FAR_SIZE / 16; // 512 cells
+  const L0 = FAR_SIZE / 16;
   const mins = [], maxs = [];
   {
     const mn = new Float32Array(L0 * L0), mx = new Float32Array(L0 * L0);
@@ -431,7 +395,6 @@ reflectedLight.indirectSpecular *= gAO;`);
     }
   }
 
-  // ---- per-frame selection
   const ranges = new Float32Array(LEVELS);
   let lodScale = 1;
   const setRanges = () => {
@@ -446,7 +409,6 @@ reflectedLight.indirectSpecular *= gAO;`);
   const frustum = new THREE.Frustum(), projView = new THREE.Matrix4(), box = new THREE.Box3();
   let count = 0, camX = 0, camZ = 0;
   const select = (k, cx, cz) => {
-    // node at level k, cell index (cx, cz) in that level's grid
     const size = 16 * (1 << k);
     const x0 = -FAR_HALF + cx * size, z0 = -FAR_HALF + cz * size;
     const n = L0 >> k;
