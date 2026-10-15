@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Drivetrain } from './drivetrain.js';
 import { SURFACES, tireCoefs, tireForces, tireRelax } from './tire.js';
+import { SteerFilter } from './steerFilter.js';
 
 const V3 = THREE.Vector3;
 const G = 9.81;
@@ -19,6 +20,8 @@ const GROUP_WHEEL_SIDE = (WHEEL_BIT << 16) | (0xffff & ~GROUND_BIT);
 
 export const STEER_ASSIST = { strong: { slip: 1.0 }, light: { slip: 1.6 } };
 const HAND_RATE = 23;
+// Front-wheel rad/s the hands may move at with the BeamNG filter, which already limits the rate itself.
+const BEAM_RACK_RATE = 6;
 
 export class Vehicle {
   constructor(RAPIER, world, P, opts = {}) {
@@ -238,9 +241,20 @@ export class Vehicle {
     const S = this.P.steer, v = Math.abs(this.speed), maxA = S.maxAngle;
     this.updateGripEstimate(h);
     const key = raw.steerKey ?? raw.steer;
-    const held = raw.analogSteer || key !== 0 || this.speed < -1;
+    const beam = this.steerAssist === 'beamng';
+    let held = raw.analogSteer || key !== 0 || this.speed < -1;
     let target = 0;
-    if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
+    if (beam) {
+      // BeamNG's filter does the rate limiting and the assists; the hands just hold what it outputs.
+      const lockKey = S.ratio * maxA;
+      if (!this.steerFilter || this.steerFilterKey !== lockKey) { this.steerFilter = new SteerFilter(this.P); this.steerFilterKey = lockKey; }
+      const car = this._filterCar || (this._filterCar = { fronts: [this.wheels[0], this.wheels[1]] });
+      car.vel = this.vel; car.right = this.right; car.fwd = this.fwd; car.accel = this.accel;
+      car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
+      car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
+      target = this.steerFilter.update(raw.analogSteer ? raw.steer : key, raw.analogSteer, h, car) * maxA;
+      held = true;
+    } else if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
     else if (key !== 0) {
       let lim = maxA;
       const a = STEER_ASSIST[this.steerAssist];
@@ -251,7 +265,7 @@ export class Vehicle {
       }
       target = raw.steer * lim;
     }
-    const rate = HAND_RATE / S.ratio;
+    const rate = beam ? BEAM_RACK_RATE : HAND_RATE / S.ratio;
     let w = this.steerVel;
     if (S.inertia != null) {
       this.grip += ((held ? 1 : 0) - this.grip) * Math.min(1, h / (held ? 0.05 : 0.25));
@@ -766,6 +780,7 @@ export class Vehicle {
     d.lockup = 0;
     if (d.mode === 'auto') d.w[1] = 0;
     if (d.running) d.startGrace = Math.max(d.startGrace, 0.6);
+    this.steerFilter?.reset();
     this.snapGeometry();
     this.readBody();
     this._lastVel.set(0, 0, 0);

@@ -19,6 +19,7 @@ import { rideRaise } from './vehicle/tuning.js';
 import { ColliderView } from './vehicle/colliderView.js';
 import { TuningPanel } from './tuningPanel.js';
 import { Vehicle } from './vehicle/Vehicle.js';
+import { setTyreCurve } from './vehicle/tire.js';
 import { buildTruck } from './vehicle/truckModel.js';
 import { VehicleView } from './vehicle/vehicleView.js';
 import { loadCarModel } from './vehicle/carModel.js';
@@ -270,7 +271,11 @@ async function main() {
     },
     steerAssist(v, o) {
       vehicle.steerAssist = v;
-      if (!o.silent) notify('setting', { text: { strong: 'Steering assist: strong', light: 'Steering assist: light', off: 'Steering assist off: full lock at any speed' }[v] });
+      if (!o.silent) notify('setting', { text: { beamng: 'Steering assist: BeamNG filter', strong: 'Steering assist: strong', light: 'Steering assist: light', off: 'Steering assist off: full lock at any speed' }[v] });
+    },
+    tyreCurve(v, o) {
+      setTyreCurve(v);
+      if (!o.silent) notify('setting', { text: v === 'physx' ? 'Tyres: flat grip curve (PhysX)' : 'Tyres: grip falls off past the peak' });
     },
     camera(v, o) { rig.setMode(v); if (!o.silent) notify('camera', { name: CAM_NAMES[v] }); },
 
