@@ -88,7 +88,7 @@ export class Vehicle {
 
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
-    this.steerVel = 0;
+    this.steerVel = 0; this.frontPath = 0; this.frontPathRate = 0;
     this.revTimer = 0;
     this.gripG = 0.63;
     this.steerAssist = 'beamng';
@@ -247,14 +247,36 @@ export class Vehicle {
       car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
       car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
       st = this.steerFilter.update(raw.analogSteer ? raw.steer : (raw.steerKey ?? raw.steer), raw.analogSteer, h, car);
-    } else st = raw.steer; // no assist: the key ramp or the stick, as it is
+    } else st = raw.steer; // slip and no assist: the key ramp or the stick, as it is
     if (!Number.isFinite(this.steerAngle)) this.steerAngle = 0;
-    // The wheels go where the input says, as with BeamNG's steering hydro, limited only by the rack's speed.
-    const target = st * maxA, d = RACK_RATE * h;
+    const target = this.steerAssist === 'slip' ? this.slipSteer(st, h) : st * maxA, d = RACK_RATE * h;
+    // The wheels go to the target, as with BeamNG's steering hydro, limited only by the rack's speed.
     const a = Math.max(-maxA, Math.min(maxA, this.steerAngle + Math.max(-d, Math.min(d, target - this.steerAngle))));
     this.steerVel = (a - this.steerAngle) / h;
     this.steerAngle = a;
     c.steer = a;
+  }
+
+  // Slip-angle steering, as in Forza or Assetto Corsa's Gamepad FX: the input sets how hard the front tyres
+  // work, not the wheel angle. The wheels are aimed along the front axle's path plus st × the tyres' peak
+  // slip angle, so a released key lets them follow the slide and a full key holds the fronts at the peak.
+  // Following the path exactly leaves the fronts with no force, and the tail swings like a pendulum, so the
+  // wheels also lead the path by how fast it turns (slipDamp, seconds): the fronts push against the swing.
+  // At a crawl the path barely turns until the tyres build force, so below assist.slipSpeed it blends into
+  // plain steering (input × lock), and it is plain steering in reverse.
+  slipSteer(st, h) {
+    const A = this.P.assist, maxA = this.P.steer.maxAngle, w0 = this.wheels[0], w1 = this.wheels[1];
+    this.pointVel(_v2.addVectors(w0.hub, w1.hub).multiplyScalar(0.5), _v);
+    const vx = _v.dot(this.fwd), vy = _v.dot(this.right);
+    const path = vx > 0.05 ? Math.atan2(vy, vx) : 0;
+    const prev = this.frontPath;
+    this.frontPath += (path - this.frontPath) * Math.min(1, h / 0.03);
+    this.frontPathRate += ((this.frontPath - prev) / h - this.frontPathRate) * Math.min(1, h / 0.05);
+    if (!Number.isFinite(this.frontPath) || !Number.isFinite(this.frontPathRate)) this.frontPath = this.frontPathRate = 0;
+    const peak = Math.atan(((w0.aPk || w0.surf.aPeak) + (w1.aPk || w1.surf.aPeak)) / 2);
+    const slip = A.slipFollow * this.frontPath + A.slipDamp * this.frontPathRate + st * peak * A.slipGain;
+    const k = Math.max(0, Math.min(1, (vx - 0.3 * A.slipSpeed) / (0.7 * A.slipSpeed)));
+    return k * slip + (1 - k) * st * maxA;
   }
 
   camber(w, sinC, sinK) {
@@ -731,7 +753,7 @@ export class Vehicle {
     d.lockup = 0;
     if (d.mode === 'auto') d.w[1] = 0;
     if (d.running) d.startGrace = Math.max(d.startGrace, 0.6);
-    this.steerFilter?.reset();
+    this.steerFilter?.reset(); this.frontPath = this.frontPathRate = 0;
     this.snapGeometry();
     this.readBody();
     this._lastVel.set(0, 0, 0);
