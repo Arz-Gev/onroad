@@ -253,6 +253,7 @@ export class Vehicle {
       car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
       car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
       target = this.steerFilter.update(raw.analogSteer ? raw.steer : key, raw.analogSteer, h, car) * maxA;
+      if (!Number.isFinite(this.steerAngle)) this.steerAngle = 0;
       // The wheels go where the filter says, as with BeamNG's steering hydro: no hand spring, column
       // inertia, aligning torque or kingpin pull in between, only the rack's speed.
       const d = BEAM_RACK_RATE * h;

@@ -103,7 +103,10 @@ export class SteerFilter {
     else st = clamp(this.kbd.getWithRate(v, dt, this.rateKbd(v, dt, this.kbd.value())), -1, 1);
     // Keep the two filters level so switching devices mid-drive doesn't jump.
     if (pad) this.kbd.set(st); else this.pad.set(st);
-    return this.stabilize(st, dt, car);
+    const out = this.stabilize(st, dt, car);
+    // A bad number would stick in the smoothers for good; start over instead of passing it on.
+    if (!Number.isFinite(out) || !Number.isFinite(this.gx)) { this.reset(); return 0; }
+    return out;
   }
 
   stabilize(st, dt, car) {
@@ -149,7 +152,9 @@ export class SteerFilter {
       const multSm = clamp(this.smU2.getWithRate(mult, dt, getRate(this.smU2.value(), mult, 0, 0.25, 2.5, 0.15, 0.5, 5)), 0, 1);
       // No understeer help while sliding, spinning or reversing.
       const margin = sign(st) === sign(oversteer) ? -1 : 0.15;
-      const fwdDot = vel.dot(car.fwd) / (velLen + 1e-10);
+      // Clamped: Rapier's single-precision rotation can make fwd a hair longer than 1, and driving straight
+      // would then put sqrt(1 - fwdDot) below zero (NaN).
+      const fwdDot = Math.min(1, vel.dot(car.fwd) / (velLen + 1e-10));
       const overMult = 1 - clamp(5 * (Math.abs(lowSpeedCoef * Math.min(velLen / speedThreshold, 1) * Math.sqrt(1 - Math.max(0, fwdDot))) - margin), 0, 1);
       const overSm = this.smO.getWithRate(overMult, dt, 3);
       this.assistance = multSm * overSm;

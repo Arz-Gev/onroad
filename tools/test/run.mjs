@@ -1,6 +1,8 @@
 import { makeCar, keyboard, step, state, launchTo, holdSpeed, H, DEG } from './sim.mjs';
 import { SURFACES, tireForces, tireCoefs } from '../../src/vehicle/tire.js';
 import { makeS15Params } from '../../src/vehicle/params.js';
+import { Vector3 } from 'three';
+import { SteerFilter } from '../../src/vehicle/steerFilter.js';
 
 const only = process.argv[2];
 const results = [];
@@ -186,6 +188,17 @@ test('Defender still drives: launch and a dirt corner without rolling over', exp
   run(c, 4, () => { minUp = Math.min(minUp, c.v.up.y); return { steer: 1, throttle: holdSpeed(c, 50) }; });
   expect('lowest body up.y (1 = level)', minUp, 0.9, 1);
   expect('lateral g on dirt', Math.abs(state(c).latG), 0.4, 0.8);
+});
+
+test('BeamNG steering filter: driving straight with a forward axis a hair over unit length stays finite', expect => {
+  const f = new SteerFilter(makeS15Params());
+  const car = { vel: new Vector3(0, 0, -25), right: new Vector3(1, 0, 0), fwd: new Vector3(0, 0, -(1 + 1e-7)), accel: new Vector3(),
+    wheelSpeed: 25, mu: 1.05, steerAngle: 0, wheelbase: 2.525, fronts: [{ Fn: 3000, surf: SURFACES.asphalt }, { Fn: 3000, surf: SURFACES.asphalt }] };
+  for (let i = 0; i < 10; i++) f.update(0, false, H, car);
+  car.fwd.set(0, 0, -1);
+  let out = 0;
+  for (let i = 0; i < 240; i++) out = f.update(0.5, false, H, car);
+  expect('filter output after a second of steering', out, 0.3, 0.6);
 });
 
 const failed = results.filter(r => !r).length;
