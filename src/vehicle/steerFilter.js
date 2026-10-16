@@ -36,10 +36,12 @@ function getRate(cur, want, a1, b1, c1, a2, b2, c2) {
 // Surfaces where understeer reduction kicks in; on loose ones digging the fronts in is how you get grip.
 const HARD = new Set(['asphalt', 'kerb', 'concrete', 'rock', 'wood'].map(k => SURFACES[k]));
 
-// BeamNG keeps these in its options menu; these are the values we start from.
+// BeamNG keeps these in its options menu; these are our values. The keyboard oversteer help is half BeamNG's 0.7
+// (countersteering snapped the car the other way), and the oversteer assistant reaches full strength by
+// 8 m/s with a 1.0 multiplier so throttle can hold a drift circle.
 export const STEER_FILTER_DEFAULTS = {
-  kbdInRate: 2.2, kbdOutRate: 1.6, kbdUndersteerMult: 0.7, kbdOversteerMult: 0.7,
-  stabilization: true, stabilizationEndSpeed: 13, stabilizationMultiplier: 0.6,
+  kbdInRate: 2.2, kbdOutRate: 1.6, kbdUndersteerMult: 0.7, kbdOversteerMult: 0.35,
+  stabilization: true, stabilizationEndSpeed: 8, stabilizationMultiplier: 1.0,
   understeerReduction: true, understeerReductionMultiplier: 0.8,
   slowdown: true, slowdownStartSpeed: 15, slowdownEndSpeed: 45, slowdownMultiplier: 0.6,
   limit: false, limitStartSpeed: 10, limitEndSpeed: 40, limitMultiplier: 0.5,
