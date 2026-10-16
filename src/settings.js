@@ -58,7 +58,7 @@ const CHOICES = {
   uiPalette: ['onroad', 'ice', 'neon', 'mint', 'violet', 'mono', 'custom'],
   gearbox: ['auto', 'manual'],
   handbrake: ['hold', 'toggle', 'auto'],
-  steerAssist: ['beamng', 'strong', 'light', 'off'],
+  steerAssist: ['beamng', 'off'],
   tyreCurve: ['pacejka', 'physx'],
   camera: ['chase', 'cockpit', 'hood', 'wheel', 'orbit'],
   speedUnit: ['kmh', 'mph'],

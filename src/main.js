@@ -271,7 +271,7 @@ async function main() {
     },
     steerAssist(v, o) {
       vehicle.steerAssist = v;
-      if (!o.silent) notify('setting', { text: { beamng: 'Steering assist: BeamNG filter', strong: 'Steering assist: strong', light: 'Steering assist: light', off: 'Steering assist off: full lock at any speed' }[v] });
+      if (!o.silent) notify('setting', { text: { beamng: 'Steering assist: BeamNG filter', off: 'Steering assist off: full lock at any speed' }[v] });
     },
     tyreCurve(v, o) {
       setTyreCurve(v);

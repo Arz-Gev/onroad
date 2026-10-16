@@ -36,16 +36,28 @@ function getRate(cur, want, a1, b1, c1, a2, b2, c2) {
 // Surfaces where understeer reduction kicks in; on loose ones digging the fronts in is how you get grip.
 const HARD = new Set(['asphalt', 'kerb', 'concrete', 'rock', 'wood'].map(k => SURFACES[k]));
 
-// BeamNG keeps these in its options menu; these are our values. The keyboard oversteer help is half BeamNG's 0.7
-// (countersteering snapped the car the other way), and the oversteer assistant reaches full strength by
-// 8 m/s with a 1.0 multiplier so throttle can hold a drift circle.
-export const STEER_FILTER_DEFAULTS = {
-  kbdInRate: 2.2, kbdOutRate: 1.6, kbdUndersteerMult: 0.7, kbdOversteerMult: 0.35,
-  stabilization: true, stabilizationEndSpeed: 8, stabilizationMultiplier: 1.0,
-  understeerReduction: true, understeerReductionMultiplier: 0.8,
-  slowdown: true, slowdownStartSpeed: 15, slowdownEndSpeed: 45, slowdownMultiplier: 0.6,
-  limit: false, limitStartSpeed: 10, limitEndSpeed: 40, limitMultiplier: 0.5,
+// The assist settings as the tuning setup stores them (speeds in m/s). BeamNG keeps these in its options
+// menu; these are our stock values. The keyboard oversteer help is half BeamNG's 0.7 (countersteering
+// snapped the car the other way). A strength of 0 turns an assistant off; for slowdown and limit,
+// a multiplier of 1 does.
+export const ASSIST_STOCK = {
+  kbdIn: 2.2, kbdOut: 1.6, kbdUndersteer: 0.7, kbdOversteer: 0.35,
+  stab: 0.8, stabSpeed: 10,
+  under: 0.8,
+  slow: 0.6, slowStart: 15, slowEnd: 45,
+  limit: 1, limitStart: 10, limitEnd: 40,
 };
+
+// Setup values → the filter's options.
+export const assistOptions = a => ({
+  kbdInRate: a.kbdIn, kbdOutRate: a.kbdOut, kbdUndersteerMult: a.kbdUndersteer, kbdOversteerMult: a.kbdOversteer,
+  stabilization: a.stab > 0, stabilizationEndSpeed: a.stabSpeed, stabilizationMultiplier: a.stab,
+  understeerReduction: a.under > 0, understeerReductionMultiplier: a.under,
+  slowdown: a.slow < 1, slowdownStartSpeed: a.slowStart, slowdownEndSpeed: Math.max(a.slowEnd, a.slowStart + 1), slowdownMultiplier: a.slow,
+  limit: a.limit < 1, limitStartSpeed: a.limitStart, limitEndSpeed: Math.max(a.limitEnd, a.limitStart + 1), limitMultiplier: a.limit,
+});
+
+export const STEER_FILTER_DEFAULTS = assistOptions(ASSIST_STOCK);
 
 export class SteerFilter {
   constructor(params, opts = {}) {

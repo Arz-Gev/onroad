@@ -119,9 +119,11 @@ test('S15 lets go of the wheel after a corner: returns to centre and drives stra
 
 const slide = (thr, release = 0.6) => {
   const c = makeCar();
+  c.v.P.assist.stabilization = false; // the car's own slide, without the oversteer assistant catching it
   launchTo(c, 50, 2);
-  run(c, 2, () => ({ steer: -1, throttle: holdSpeed(c, 50) }));
-  run(c, release, () => ({ steer: -1, throttle: thr }));
+  // About 15 degrees of lock at 50 km/h, what the old keyboard assist allowed; full lock (45) would scrub the car to a crawl.
+  run(c, 2, () => ({ steer: -0.35, throttle: holdSpeed(c, 50) }));
+  run(c, release, () => ({ steer: -0.35, throttle: thr }));
   const v = c.v, L = v.P.wheelbase, cz = v.P.com[2];
   const trace = [];
   run(c, 2.5, () => {
@@ -138,24 +140,6 @@ test('S15 power oversteer: more throttle, more slide', expect => {
   expect('50 % throttle: body slip (deg)', peak[0.5], 0, 4);
   expect('70 % throttle: body slip (deg)', peak[0.7], peak[0.5], 20);
   expect('full throttle: body slip (deg)', peak[1], 30, 180);
-});
-
-test('S15 key released in a slide: the wheel moves smoothly, no jump', expect => {
-  const tr = slide(0.8, 0.7);
-  let acc = 0;
-  for (let i = 2; i < tr.length; i++) {
-    const w1 = (tr[i].steer - tr[i - 1].steer) * DEG / H, w0 = (tr[i - 1].steer - tr[i - 2].steer) * DEG / H;
-    acc = Math.max(acc, Math.abs(w1 - w0) / H);
-  }
-  expect('largest steering acceleration (rad/s²)', acc, 0, 300);
-});
-
-test('S15 hands off in a slide: wheels line up with where the front goes, from small angles up', expect => {
-  const tr = slide(0.7).slice(Math.round(0.4 / H));
-  let err = 0, n = 0;
-  for (const p of tr) if (Math.abs(p.fa) > 0.5) { err = Math.max(err, Math.abs(p.steer - p.fa)); n++; }
-  expect('samples with the front moving sideways', n, 50, 1e9);
-  expect('largest gap between wheel and front direction (deg)', err, 0, 2);
 });
 
 test('S15 braking from 100 km/h with ABS: straight and short', expect => {

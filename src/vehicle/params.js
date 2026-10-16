@@ -53,7 +53,7 @@ export function makeDefenderParams() {
     steer: {
       maxAngle: 0.62, kingpinTrack: 1.38, ratio: 17,
 
-      casterTrail: 0.022, pneuTrail: 0.035, stiffness: 50000,
+      casterTrail: 0.022,
     },
 
     brakes: { front: 2700, rear: 1350, handbrake: 3200, handbrakeHold: 24000 },
@@ -158,8 +158,7 @@ export function makeS15Params() {
       relaxX: 0.15, relaxY: 0.4,
     },
 
-    steer: { maxAngle: 0.785, kingpinTrack: 1.40, ratio: 10, ackermann: 0.7, casterTrail: 0.0376, pneuTrail: 0.03,
-      kpi: 13, kpiOffset: 0.06, inertia: 3, damping: 200, friction: 4, handStiffness: 8000, handDamping: 60, handTorque: 800 },
+    steer: { maxAngle: 45 * Math.PI / 180, kingpinTrack: 1.40, ratio: 10, ackermann: 0.7, casterTrail: 0.0376, kpi: 13 },
     brakes: { front: 1360, rear: 990, handbrake: 2500, handbrakeHold: 8000 },
     engine: {
       ...P.engine,
