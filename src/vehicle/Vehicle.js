@@ -242,10 +242,10 @@ export class Vehicle {
     this.updateGripEstimate(h);
     const key = raw.steerKey ?? raw.steer;
     const beam = this.steerAssist === 'beamng';
-    let held = raw.analogSteer || key !== 0 || this.speed < -1;
+    const held = raw.analogSteer || key !== 0 || this.speed < -1;
     let target = 0;
     if (beam) {
-      // BeamNG's filter does the rate limiting and the assists; the hands just hold what it outputs.
+      // BeamNG's filter does the rate limiting and the assists.
       const lockKey = S.ratio * maxA;
       if (!this.steerFilter || this.steerFilterKey !== lockKey) { this.steerFilter = new SteerFilter(this.P); this.steerFilterKey = lockKey; }
       const car = this._filterCar || (this._filterCar = { fronts: [this.wheels[0], this.wheels[1]] });
@@ -253,7 +253,14 @@ export class Vehicle {
       car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
       car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
       target = this.steerFilter.update(raw.analogSteer ? raw.steer : key, raw.analogSteer, h, car) * maxA;
-      held = true;
+      // The wheels go where the filter says, as with BeamNG's steering hydro: no hand spring, column
+      // inertia, aligning torque or kingpin pull in between, only the rack's speed.
+      const d = BEAM_RACK_RATE * h;
+      const a = Math.max(-maxA, Math.min(maxA, this.steerAngle + Math.max(-d, Math.min(d, target - this.steerAngle))));
+      this.steerVel = (a - this.steerAngle) / h;
+      this.steerAngle = a; this.hand = a; this.grip = 1; this.handsOff = false;
+      c.steer = a;
+      return;
     } else if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
     else if (key !== 0) {
       let lim = maxA;
@@ -646,7 +653,7 @@ export class Vehicle {
       M += w.Fy * (S.casterTrail + tp);
     }
     this.alignM = M;
-    if (!S.stiffness || S.inertia != null) { this.steerComp = 0; return; }
+    if (!S.stiffness || S.inertia != null || this.steerAssist === 'beamng') { this.steerComp = 0; return; }
 
     const target = this.handsOff ? 0 : Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
     this.steerComp += (target - this.steerComp) * Math.min(1, h * 60);
