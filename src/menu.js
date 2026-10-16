@@ -22,7 +22,8 @@ const SECTIONS = [
     row('autoClutch', 'Auto-clutch', 'switch', { hot: 'autoClutch', note: 'Off: hold Shift for the clutch.' }),
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
     row('handbrake', 'Handbrake', 'seg', { options: [['hold', 'Hold'], ['toggle', 'Toggle'], ['auto', 'Auto']], note: 'Hold: while the key is down. Toggle: press on, press off. Auto: a short tap toggles, a long press holds.' }),
-    row('steerAssist', 'Keyboard steering assist', 'seg', { options: [['strong', 'Strong'], ['light', 'Light'], ['off', 'Off']], note: 'How far a held steering key turns the front wheels at speed: to the angle a car needs at the grip limit at this speed, plus the front tyres\' peak slip. It depends only on speed, never on what the car is doing. Light: a little further. Off: full lock at any speed. Let go of the key and the wheel is free: the tyres turn it by themselves.' }),
+    row('steerAssist', 'Steering assist', 'seg', { options: [['beamng', 'BeamNG'], ['off', 'Off']], note: 'BeamNG: BeamNG.drive\'s keyboard and gamepad steering filter with its assists, tuned in Tuning (Tab) → Steering assist. Off: the key or stick turns the wheels directly, full lock at any speed.' }),
+    row('tyreCurve', 'Tyre grip curve', 'seg', { options: [['pacejka', 'Falls off'], ['physx', 'Flat (PhysX)']], note: 'Falls off: past the peak slip the tyre loses some grip, as real tyres do. Flat: PhysX Vehicle2\'s curve, grip rises to the peak and stays there, so slides are steadier.' }),
     row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
   ] },
   { title: 'View', col: 2, rows: [

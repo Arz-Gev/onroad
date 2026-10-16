@@ -12,12 +12,14 @@ const set = (o, path, v) => { const ks = path.split('.'), last = ks.pop(); ks.re
 const pct = (v, s) => { const d = Math.round((v / s - 1) * 100); return d === 0 ? 'stock' : (d > 0 ? '+' : '') + d + ' %'; };
 const f1 = x => x.toFixed(1), f2 = x => x.toFixed(2), f0 = x => Math.round(x).toString();
 const cm = x => `${Math.round(x * 100)} cm`;
+const kmh = v => `${Math.round(v * 3.6)} km/h`;
+const pc = v => `${Math.round(v * 100)} %`;
 const sgnCm = x => `${x >= 0 ? '+' : '−'}${Math.abs(Math.round(x * 1000) / 10).toFixed(1)} cm`;
 const kN = x => `${(x / 1000).toFixed(1)} k`;
 const AXLES = [['front', 'F'], ['rear', 'R']];
 const GEAR_NAMES = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 const LIVE = { range: 'Low range', centreLock: 'Centre lock', rearLock: 'Rear locker', frontLock: 'Front locker', traction: 'Traction ctl', abs: 'ABS', rwd: '2WD' };
-const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['tyres'], susp: ['suspension'], brakes: ['brakes'], mass: ['mass'], steer: ['steering'], body: ['colliders'] };
+const SECT = { engine: ['engine'], trans: ['gearbox'], diff: ['diff'], tyres: ['tyres'], susp: ['suspension'], brakes: ['brakes'], mass: ['mass'], steer: ['steering'], assist: ['assist'], body: ['colliders'] };
 
 function lr(key, U, ax) {
   const truck = !!U.transfer, rear = ax === 'R';
@@ -52,7 +54,15 @@ function lr(key, U, ax) {
     'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
     'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
     'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
-    'steering.caster': { l: 'колёса слабее сами идут в занос', r: 'колёса сильнее сами ловят занос, больше развала на угле', n: 'Клавиша руля отпущена: колёса сами поворачиваются туда, куда едет перед. Ещё кастер наклоняет повёрнутое колесо (развал).' },
+    'assist.kbdIn': { l: 'руль медленнее возвращается в центр', r: 'быстрее возвращается в центр' },
+    'assist.kbdOut': { l: 'клавиша поворачивает руль медленнее', r: 'быстрее' },
+    'assist.kbdUndersteer': { l: 'в нагруженном повороте руль идёт так же быстро', r: 'медленнее докручивает в нагруженном повороте, меньше сноса', n: 'Клавиатура: насколько замедлять руль, когда машина уже сильно нагружена в повороте и клавиша жмёт в ту же сторону.' },
+    'assist.kbdOversteer': { l: 'контрруление с обычной скоростью', r: 'контрруление быстрее, легче перекрутить', n: 'Клавиатура: насколько ускорять руль, когда жмёшь против заноса.' },
+    'assist.stab': { l: 'слабее сам подруливает в заносе (0: выкл)', r: 'сильнее сам ловит занос' , n: 'Помощник против заноса: подруливает туда, куда машина реально едет. Работает и в заносе.' },
+    'assist.stabSpeed': { l: 'полная сила уже на малой скорости', r: 'полная сила только на большой скорости' },
+    'assist.under': { l: 'больше угла, можно перекрутить (0: выкл)', r: 'держит угол у предела сцепления', n: 'Помощник против сноса: не даёт крутить сильнее, чем шины держат. Только на асфальте, в заносе выключается.' },
+    'assist.slow': { l: 'руль сильно медленнее на скорости', r: 'не замедляет (1: выкл)', n: 'Замедление руля на скорости: между «с» и «до» скорость руля плавно падает до этой доли. В заносе выключается.' },
+    'assist.limit': { l: 'меньше выворот на скорости', r: 'не ограничивает (1: выкл)', n: 'Ограничение угла на скорости: между «с» и «до» выворот плавно падает до этой доли. В заносе выключается.' },
   };
   return H[key] || '';
 }
@@ -208,7 +218,22 @@ export class TuningPanel {
       { id: 'steer', title: 'Steering', rows: [
         sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, lr('steering.lock', U)),
         sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, lr('steering.ratio', U)),
-        sl('steering.caster', 'Caster', 'steering.caster', v => `${f1(v)}°`, lr('steering.caster', U)),
+      ] },
+      { id: 'assist', title: 'Steering assist (BeamNG)', rows: [
+        { type: 'note', text: 'Работает, когда в меню Settings → Steering assist выбран BeamNG.' },
+        sl('assist.kbdOut', 'Keyboard: turn-in speed', 'assist.kbdOut', f1, lr('assist.kbdOut', U)),
+        sl('assist.kbdIn', 'Keyboard: return speed', 'assist.kbdIn', f1, lr('assist.kbdIn', U)),
+        sl('assist.kbdUndersteer', 'Keyboard: slower into a loaded turn', 'assist.kbdUndersteer', pc, lr('assist.kbdUndersteer', U)),
+        sl('assist.kbdOversteer', 'Keyboard: faster countersteer', 'assist.kbdOversteer', pc, lr('assist.kbdOversteer', U)),
+        sl('assist.stab', 'Oversteer assist', 'assist.stab', v => (v ? `×${f2(v)}` : 'off'), lr('assist.stab', U)),
+        sl('assist.stabSpeed', 'Oversteer assist: full at', 'assist.stabSpeed', kmh, lr('assist.stabSpeed', U)),
+        sl('assist.under', 'Understeer assist', 'assist.under', v => (v ? pc(v) : 'off'), lr('assist.under', U)),
+        sl('assist.slow', 'Slower steering at speed', 'assist.slow', v => (v < 1 ? pc(v) : 'off'), lr('assist.slow', U)),
+        sl('assist.slowStart', 'Slower steering: from', 'assist.slowStart', kmh),
+        sl('assist.slowEnd', 'Slower steering: to', 'assist.slowEnd', kmh),
+        sl('assist.limit', 'Limit lock at speed', 'assist.limit', v => (v < 1 ? pc(v) : 'off'), lr('assist.limit', U)),
+        sl('assist.limitStart', 'Limit lock: from', 'assist.limitStart', kmh),
+        sl('assist.limitEnd', 'Limit lock: to', 'assist.limitEnd', kmh),
       ] },
       { id: 'body', title: 'Body and colliders', rows: [{ type: 'colliders' }] },
       { id: 'measure', title: 'Measure', rows: [{ type: 'dyno' }] },
@@ -239,6 +264,7 @@ export class TuningPanel {
         <div class="tn-rng"><input type="range" min="${min}" max="${max}" step="${step}" data-path="${r.path}" aria-label="${escapeHTML(r.label)}" title="Double-click: stock"><i style="left:${tick}%"></i></div>
         ${r.hint ? this.hintHTML(r.hint) : ''}</div>`;
     }
+    if (r.type === 'note') return `<div class="tn-row"><div class="tn-h">${r.text}</div></div>`;
     if (r.type === 'chips') return `<div class="tn-row" data-row="${r.path}"><div class="tn-l"><span>${r.label}</span><output></output></div>
       <div class="tn-chips">${r.options.map(([v, l]) => `<button type="button" data-chip="${r.path}" data-v="${v}">${l}</button>`).join('')}</div>${r.hint ? `<div class="tn-h">${r.hint}</div>` : ''}</div>`;
     if (r.type === 'engines') return `<div class="tn-row"><div class="tn-chips tn-eng">${this.T.ENGINE_ORDER.map(k => `<button type="button" data-engine="${k}" title="${escapeHTML(this.T.ENGINES[k].name)}">${this.T.ENGINES[k].label}</button>`).join('')}</div><div class="tn-h tn-engnote"></div></div>`;
@@ -582,6 +608,7 @@ export class TuningPanel {
     ro('steer', kv([
       ['Turning circle', `${f1(A.turnDiameter)} m${vs(A.turnDiameter, S.turnDiameter, 1, -1)}`], ['Lock to lock', `${f1(A.lockToLock)} turns`],
     ]));
+    ss('assist', this.api.settings.get('steerAssist') === 'beamng' ? `oversteer ×${f2(s.assist.stab)}` : 'off in Settings');
     ss('body', `${s.colliders.length} boxes`);
     ro('body', U.offroadGeo ? kv([
       ['Approach', `${f0(geo.approach)}°`], ['Departure', `${f0(geo.departure)}°`], ['Breakover', `${f0(geo.breakover)}°`],

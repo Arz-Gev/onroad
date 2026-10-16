@@ -1,4 +1,5 @@
 import { makeDefenderParams, makeS15Params } from './params.js';
+import { ASSIST_STOCK, assistOptions } from './steerFilter.js';
 import { tireRadialStiffness } from './tire.js';
 import { D } from './truckDims.js';
 
@@ -93,7 +94,11 @@ const BASE_RANGES = {
   'suspension.rc': [-0.05, 0.25, 0.005], 'suspension.camber': [-6, 2, 0.25],
   'brakes.force': [0.4, 1.8, 0.05], 'brakes.bias': [0.4, 0.85, 0.01], 'brakes.handbrake': [0.3, 2, 0.05],
   'mass.cargo': [0, 900, 10], 'mass.roof': [0, 300, 5], 'mass.comY': [-0.15, 0.4, 0.01],
-  'steering.lock': [25, 48, 0.5], 'steering.ratio': [11, 24, 0.5], 'steering.caster': [2, 10, 0.5],
+  'steering.lock': [25, 48, 0.5], 'steering.ratio': [11, 24, 0.5],
+  'assist.kbdIn': [0.5, 5, 0.1], 'assist.kbdOut': [0.5, 4, 0.1], 'assist.kbdUndersteer': [0, 1, 0.05], 'assist.kbdOversteer': [0, 1, 0.05],
+  'assist.stab': [0, 2, 0.05], 'assist.stabSpeed': [3, 30, 0.5], 'assist.under': [0, 1, 0.05],
+  'assist.slow': [0.2, 1, 0.05], 'assist.slowStart': [0, 50, 0.5], 'assist.slowEnd': [5, 80, 0.5],
+  'assist.limit': [0.2, 1, 0.05], 'assist.limitStart': [0, 50, 0.5], 'assist.limitEnd': [5, 80, 0.5],
   'diff.preload': [0, 300, 5], 'diff.power': [0, 1, 0.01], 'diff.coast': [0, 1, 0.01],
   'box.c': [-3.5, 3.5, 0.005], 'box.h': [0.02, 2.2, 0.005], 'box.r': [0, 0.2, 0.005],
 };
@@ -168,7 +173,7 @@ function makeProfile(id) {
 
     const axle = a => ({ k: a.k, bump: a.bump, rebound: a.rebound, arb: a.arb, travel: a.travel, ...(a.rcY != null ? { rc: a.rcY } : {}), ...(a.camber != null ? { camber: a.camber } : {}) });
     const s = {
-      v: 3,
+      v: 4,
       car: id,
       engine: { preset: C.stockEngine, torque: 1, revs: 0 },
       gearbox: {
@@ -180,7 +185,8 @@ function makeProfile(id) {
       suspension: { lift: 0, front: axle(f), rear: axle(r) },
       brakes: { force: 1, bias: P.brakes.front / (P.brakes.front + P.brakes.rear), handbrake: 1 },
       mass: { cargo: 0, roof: 0, comY: 0 },
-      steering: { lock: P.steer.maxAngle / DEG, ratio: P.steer.ratio, caster: Math.round(Math.atan(P.steer.casterTrail / P.tire.radius) / DEG * 2) / 2 },
+      steering: { lock: P.steer.maxAngle / DEG, ratio: P.steer.ratio },
+      assist: { ...ASSIST_STOCK },
       colliders: P.colliders.map((box, i) => ({ name: C.colliderNames[i] || `Box ${i + 1}`, box: [...box] })),
     };
     if (C.ui.diff) { const L = P.lsd || { preload: 80, power: 0.6, coast: 0.35 }; s.diff = { type: P.rearDiff || 'welded', preload: L.preload, power: L.power, coast: L.coast }; }
@@ -209,19 +215,22 @@ function makeProfile(id) {
     out.tyres.pressF = num(t.pressF, 'tyres.press', out.tyres.pressF);
     out.tyres.pressR = num(t.pressR, 'tyres.press', out.tyres.pressR);
     out.tyres.grip = num(t.grip, 'tyres.grip', out.tyres.grip);
-    const fresh = id === 's15' && !(s.v >= 3);
+    // S15 setups saved before v4 keep the old suspension, steering and brakes; start those from stock.
+    const fresh = id === 's15' && !(s.v >= 4);
     const su = fresh ? {} : clone(s.suspension || {});
 
     if (id === 'defender' && !(s.v >= 2) && su.front?.arb === 8000 && su.rear?.arb === 8500) { delete su.front.arb; delete su.rear.arb; }
     out.suspension.lift = num(su.lift, 'suspension.lift', out.suspension.lift);
     for (const ax of ['front', 'rear']) for (const k of ['k', 'bump', 'rebound', 'arb', 'travel', 'rc', 'camber']) if (out.suspension[ax][k] !== undefined) out.suspension[ax][k] = num(su[ax]?.[k], 'suspension.' + k, out.suspension[ax][k]);
-    const b = s.brakes || {};
+    const b = fresh ? {} : s.brakes || {};
     for (const k of ['force', 'bias', 'handbrake']) out.brakes[k] = num(b[k], 'brakes.' + k, out.brakes[k]);
     const m = s.mass || {};
     for (const k of ['cargo', 'comY']) out.mass[k] = num(m[k], 'mass.' + k, out.mass[k]);
     if (C.ui.roof) out.mass.roof = num(m.roof, 'mass.roof', out.mass.roof);
     const st = fresh ? {} : s.steering || {};
-    for (const k of ['lock', 'ratio', 'caster']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
+    for (const k of ['lock', 'ratio']) out.steering[k] = num(st[k], 'steering.' + k, out.steering[k]);
+    const as = s.assist || {};
+    for (const k in out.assist) out.assist[k] = num(as[k], 'assist.' + k, out.assist[k]);
     if (out.diff) {
       const df = s.diff || {};
       if (DIFF_TYPES.includes(df.type)) out.diff.type = df.type;
@@ -287,8 +296,7 @@ function makeProfile(id) {
     P.brakes.handbrake = B.brakes.handbrake * br.handbrake;
 
     P.steer.maxAngle = s.steering.lock * DEG; P.steer.ratio = s.steering.ratio;
-
-    P.steer.casterTrail = P.tire.radius * Math.tan(s.steering.caster * DEG);
+    P.assist = assistOptions(s.assist);
 
     if (s.diff) { P.rearDiff = s.diff.type; P.lsd = { preload: s.diff.preload, power: s.diff.power, coast: s.diff.coast }; }
 

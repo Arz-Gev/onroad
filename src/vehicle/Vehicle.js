@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Drivetrain } from './drivetrain.js';
 import { SURFACES, tireCoefs, tireForces, tireRelax } from './tire.js';
+import { SteerFilter } from './steerFilter.js';
 
 const V3 = THREE.Vector3;
 const G = 9.81;
@@ -17,8 +18,8 @@ const GROUND_BIT = 0x0001, WHEEL_BIT = 0x0002;
 export const GROUP_GROUND = (GROUND_BIT << 16) | 0xffff;
 const GROUP_WHEEL_SIDE = (WHEEL_BIT << 16) | (0xffff & ~GROUND_BIT);
 
-export const STEER_ASSIST = { strong: { slip: 1.0 }, light: { slip: 1.6 } };
-const HAND_RATE = 23;
+// Front-wheel rad/s the steering rack can move at; the BeamNG filter or the key ramp limits the rate before it.
+const RACK_RATE = 6;
 
 export class Vehicle {
   constructor(RAPIER, world, P, opts = {}) {
@@ -87,12 +88,10 @@ export class Vehicle {
 
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
-    this.steerComp = 0;
-    this.alignM = 0; this.handsOff = false;
-    this.steerVel = 0; this.hand = 0; this.grip = 1;
+    this.steerVel = 0;
     this.revTimer = 0;
-    this.gripG = 0.63; this.gripSlip = 0.16;
-    this.steerAssist = 'strong';
+    this.gripG = 0.63;
+    this.steerAssist = 'beamng';
     this.arcadeAuto = false;
     this.speed = 0;
     this.tireT = new Float64Array(4);
@@ -156,6 +155,7 @@ export class Vehicle {
   }
 
   retune({ colliders = true, snap = false } = {}) {
+    this.steerFilter = null; // rebuilt with the new assist settings on the next step
     this.updateMass(snap);
     if (colliders) this.setColliders(this.P.colliders);
     this.drivetrain.updateInertia();
@@ -235,41 +235,26 @@ export class Vehicle {
     c.clutch = raw.clutch;
     c.handbrake = this.handbrakeLogic(raw, h);
 
-    const S = this.P.steer, v = Math.abs(this.speed), maxA = S.maxAngle;
+    const S = this.P.steer, maxA = S.maxAngle;
     this.updateGripEstimate(h);
-    const key = raw.steerKey ?? raw.steer;
-    const held = raw.analogSteer || key !== 0 || this.speed < -1;
-    let target = 0;
-    if (raw.analogSteer) target = raw.steer * maxA / (1 + Math.max(0, v - 8) / 30);
-    else if (key !== 0) {
-      let lim = maxA;
-      const a = STEER_ASSIST[this.steerAssist];
-      const vx = this.vel.dot(this.fwd);
-      if (a && vx > 3) {
-        const useful = this.P.wheelbase * this.gripG * G / (vx * vx) + a.slip * this.gripSlip;
-        lim = maxA + (Math.min(maxA, useful) - maxA) * Math.min(1, (vx - 3) / 3);
-      }
-      target = raw.steer * lim;
-    }
-    const rate = HAND_RATE / S.ratio;
-    let w = this.steerVel;
-    if (S.inertia != null) {
-      this.grip += ((held ? 1 : 0) - this.grip) * Math.min(1, h / (held ? 0.05 : 0.25));
-      this.hand += Math.max(-rate * h, Math.min(rate * h, (held ? target : this.steerAngle) - this.hand));
-      const Mh = this.grip * Math.max(-S.handTorque, Math.min(S.handTorque, S.handStiffness * (this.hand - this.steerAngle) - S.handDamping * w));
-      const Fz = Math.max(0, this.wheels[0].Fn) + Math.max(0, this.wheels[1].Fn);
-      const M = Mh - this.alignM - Fz * S.kpiOffset * Math.sin(S.kpi * DEG) * Math.sin(this.steerAngle) - S.friction * Math.tanh(w / 0.05);
-      w = (w + h * M / S.inertia) / (1 + h * S.damping / S.inertia);
-    } else {
-      const cmd = Math.max(-rate, Math.min(rate, (target - this.steerAngle) / 0.05));
-      w += (cmd - w) * Math.min(1, h / 0.025);
-    }
-    let a = this.steerAngle + w * h;
-    if (Math.abs(a) >= maxA) { a = Math.sign(a) * maxA; w = 0; }
-    this.steerAngle = a; this.steerVel = w;
-    const free = !held;
-    this.handsOff = free;
-    c.steer = this.steerAngle;
+    let st;
+    if (this.steerAssist === 'beamng') {
+      // BeamNG's filter does the rate limiting and the assists.
+      const lockKey = S.ratio * maxA;
+      if (!this.steerFilter || this.steerFilterKey !== lockKey) { this.steerFilter = new SteerFilter(this.P, this.P.assist); this.steerFilterKey = lockKey; }
+      const car = this._filterCar || (this._filterCar = { fronts: [this.wheels[0], this.wheels[1]] });
+      car.vel = this.vel; car.right = this.right; car.fwd = this.fwd; car.accel = this.accel;
+      car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
+      car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
+      st = this.steerFilter.update(raw.analogSteer ? raw.steer : (raw.steerKey ?? raw.steer), raw.analogSteer, h, car);
+    } else st = raw.steer; // no assist: the key ramp or the stick, as it is
+    if (!Number.isFinite(this.steerAngle)) this.steerAngle = 0;
+    // The wheels go where the input says, as with BeamNG's steering hydro, limited only by the rack's speed.
+    const target = st * maxA, d = RACK_RATE * h;
+    const a = Math.max(-maxA, Math.min(maxA, this.steerAngle + Math.max(-d, Math.min(d, target - this.steerAngle))));
+    this.steerVel = (a - this.steerAngle) / h;
+    this.steerAngle = a;
+    c.steer = a;
   }
 
   camber(w, sinC, sinK) {
@@ -284,16 +269,13 @@ export class Vehicle {
   }
 
   updateGripEstimate(h) {
-    let mu = 0, n = 0, ap = 0, nf = 0;
+    let mu = 0, n = 0;
     for (const w of this.wheels) {
       if (!w.contact || !(w.Fn > 0) || !w.co.mu) continue;
       mu += w.co.mu; n++;
-      if (w.i < 2) { ap += w.aPk || w.surf.aPeak; nf++; }
     }
     if (!n) return;
-    const k = Math.min(1, h / 0.3);
-    this.gripG += (0.80 * mu / n - this.gripG) * k;
-    if (nf) this.gripSlip += (ap / nf - this.gripSlip) * k;
+    this.gripG += (0.80 * mu / n - this.gripG) * Math.min(1, h / 0.3);
   }
 
   readBody() {
@@ -315,7 +297,7 @@ export class Vehicle {
   }
 
   steerAngles() {
-    const d = this.steerAngle + this.steerComp;
+    const d = this.steerAngle;
     if (Math.abs(d) < 1e-4) return [d, d];
     const L = this.P.wheelbase, T = this.P.steer.kingpinTrack;
     const Rt = L / Math.tan(Math.abs(d));
@@ -619,23 +601,6 @@ export class Vehicle {
     }
 
     for (let i = 0; i < 4; i++) this.wheels[i].spin += dt.w[2 + i] * h;
-    this.steerCompliance(h);
-  }
-
-  steerCompliance(h) {
-    const S = this.P.steer;
-    let M = 0;
-    for (let i = 0; i < 2; i++) {
-      const w = this.wheels[i];
-      if (w.Fn <= 0) continue;
-      const tp = S.pneuTrail * Math.max(0, 1 - w.slipNorm);
-      M += w.Fy * (S.casterTrail + tp);
-    }
-    this.alignM = M;
-    if (!S.stiffness || S.inertia != null) { this.steerComp = 0; return; }
-
-    const target = this.handsOff ? 0 : Math.max(-0.06, Math.min(0.06, -M / S.stiffness));
-    this.steerComp += (target - this.steerComp) * Math.min(1, h * 60);
   }
 
   hubPenDot(w) {
@@ -766,6 +731,7 @@ export class Vehicle {
     d.lockup = 0;
     if (d.mode === 'auto') d.w[1] = 0;
     if (d.running) d.startGrace = Math.max(d.startGrace, 0.6);
+    this.steerFilter?.reset();
     this.snapGeometry();
     this.readBody();
     this._lastVel.set(0, 0, 0);

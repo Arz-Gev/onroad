@@ -14,6 +14,12 @@ for (const s of Object.values(SURFACES)) s.B = Math.tan(Math.PI / (2 * s.C));
 
 const FN_REF = 5200;
 
+// Grip curve past the peak. 'pacejka': sin(C atan(B s)), falls off after the peak. 'physx': PhysX Vehicle2's
+// default (Michigan / CarSimEd) curve K - K²/3 + K³/27 with K = 3s: the same start, the peak at s = 1, then flat.
+let flatCurve = false;
+export function setTyreCurve(name) { flatCurve = name === 'physx'; }
+const michigan = K => Math.min(1, K - K * K / 3 + K * K * K / 27);
+
 const LAT_LOAD_EXP = 0.35;
 export const latPeak = (surf, Fn) => surf.aPeak * Math.pow(Math.max(0.25, Math.min(2.5, Fn / FN_REF)), LAT_LOAD_EXP);
 
@@ -45,7 +51,7 @@ export function tireForces(w, Fn, vsx, vsy, speed, surf, co) {
   const s = Math.hypot(sx, sy);
   let Fx = 0, Fy = 0;
   if (s > 1e-9) {
-    const F = mu * Fn * Math.sin(surf.C * Math.atan(surf.B * s));
+    const F = mu * Fn * (flatCurve ? michigan(3 * s) : Math.sin(surf.C * Math.atan(surf.B * s)));
     Fx = F * sx / s;
     Fy = 0.95 * F * sy / s;
   }
