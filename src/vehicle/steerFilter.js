@@ -46,10 +46,6 @@ export const ASSIST_STOCK = {
   under: 0.8,
   slow: 0.6, slowStart: 15, slowEnd: 45,
   limit: 1, limitStart: 10, limitEnd: 40,
-  // Slip-angle steering (Vehicle.slipSteer): share of the tyres' peak slip a full key asks for, how much a
-  // released key follows the front axle's path, how far (s) the wheels lead its swing, and the speed (m/s)
-  // from which it fully takes over.
-  slipGain: 1, slipFollow: 1, slipDamp: 0.08, slipSpeed: 3,
 };
 
 // Setup values → the filter's options.
@@ -59,7 +55,6 @@ export const assistOptions = a => ({
   understeerReduction: a.under > 0, understeerReductionMultiplier: a.under,
   slowdown: a.slow < 1, slowdownStartSpeed: a.slowStart, slowdownEndSpeed: Math.max(a.slowEnd, a.slowStart + 1), slowdownMultiplier: a.slow,
   limit: a.limit < 1, limitStartSpeed: a.limitStart, limitEndSpeed: Math.max(a.limitEnd, a.limitStart + 1), limitMultiplier: a.limit,
-  slipGain: a.slipGain, slipFollow: a.slipFollow, slipDamp: a.slipDamp, slipSpeed: a.slipSpeed,
 });
 
 export const STEER_FILTER_DEFAULTS = assistOptions(ASSIST_STOCK);

@@ -99,7 +99,6 @@ const BASE_RANGES = {
   'assist.stab': [0, 2, 0.05], 'assist.stabSpeed': [3, 30, 0.5], 'assist.under': [0, 1, 0.05],
   'assist.slow': [0.2, 1, 0.05], 'assist.slowStart': [0, 50, 0.5], 'assist.slowEnd': [5, 80, 0.5],
   'assist.limit': [0.2, 1, 0.05], 'assist.limitStart': [0, 50, 0.5], 'assist.limitEnd': [5, 80, 0.5],
-  'assist.slipGain': [0.5, 2, 0.05], 'assist.slipFollow': [0, 1, 0.05], 'assist.slipDamp': [0, 0.3, 0.01], 'assist.slipSpeed': [0.5, 10, 0.25],
   'diff.preload': [0, 300, 5], 'diff.power': [0, 1, 0.01], 'diff.coast': [0, 1, 0.01],
   'box.c': [-3.5, 3.5, 0.005], 'box.h': [0.02, 2.2, 0.005], 'box.r': [0, 0.2, 0.005],
 };

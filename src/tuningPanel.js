@@ -54,10 +54,6 @@ function lr(key, U, ax) {
     'mass.comY': { l: 'ниже: меньше крен', r: 'выше: больше крен' },
     'steering.lock': { l: 'шире разворот', r: truck ? 'круче разворот' : 'круче разворот, глубже занос' },
     'steering.ratio': { l: 'быстрее руль', r: 'медленнее руль' },
-    'assist.slipGain': { l: 'передние шины работают слабее пика', r: 'за пиком: острее, но скребут', n: 'Полная клавиша или стик = столько от угла пика сцепления передних шин. 100 % — ровно пик.' },
-    'assist.slipFollow': { l: 'отпущенный руль меньше ловит занос', r: 'отпущенный руль смотрит туда, куда едет передок', n: 'Насколько колёса сами поворачиваются по ходу передка, когда руль отпущен.' },
-    'assist.slipDamp': { l: 'хвост дольше болтается', r: 'занос быстрее успокаивается, руль живее', n: 'Колёса чуть опережают ход передка, пока занос растёт или гаснет, и передние шины гасят раскачку.' },
-    'assist.slipSpeed': { l: 'работает почти с места', r: 'включается позже, ниже — обычный руль' },
     'assist.kbdIn': { l: 'руль медленнее возвращается в центр', r: 'быстрее возвращается в центр' },
     'assist.kbdOut': { l: 'клавиша поворачивает руль медленнее', r: 'быстрее' },
     'assist.kbdUndersteer': { l: 'в нагруженном повороте руль идёт так же быстро', r: 'медленнее докручивает в нагруженном повороте, меньше сноса', n: 'Клавиатура: насколько замедлять руль, когда машина уже сильно нагружена в повороте и клавиша жмёт в ту же сторону.' },
@@ -223,12 +219,8 @@ export class TuningPanel {
         sl('steering.lock', 'Max lock', 'steering.lock', v => `${f1(v)}°`, lr('steering.lock', U)),
         sl('steering.ratio', 'Steering ratio', 'steering.ratio', v => `${f1(v)}:1`, lr('steering.ratio', U)),
       ] },
-      { id: 'assist', title: 'Steering assist', rows: [
-        { type: 'note', text: 'Slip — когда в Settings → Steering assist выбран Slip angle. Остальное — для режима BeamNG.' },
-        sl('assist.slipGain', 'Slip: grip used at full input', 'assist.slipGain', pc, lr('assist.slipGain', U)),
-        sl('assist.slipFollow', 'Slip: wheels follow the slide', 'assist.slipFollow', pc, lr('assist.slipFollow', U)),
-        sl('assist.slipDamp', 'Slip: slide damping', 'assist.slipDamp', v => `${f2(v)} s`, lr('assist.slipDamp', U)),
-        sl('assist.slipSpeed', 'Slip: full from', 'assist.slipSpeed', kmh, lr('assist.slipSpeed', U)),
+      { id: 'assist', title: 'Steering assist (BeamNG)', rows: [
+        { type: 'note', text: 'Работает, когда в меню Settings → Steering assist выбран BeamNG.' },
         sl('assist.kbdOut', 'Keyboard: turn-in speed', 'assist.kbdOut', f1, lr('assist.kbdOut', U)),
         sl('assist.kbdIn', 'Keyboard: return speed', 'assist.kbdIn', f1, lr('assist.kbdIn', U)),
         sl('assist.kbdUndersteer', 'Keyboard: slower into a loaded turn', 'assist.kbdUndersteer', pc, lr('assist.kbdUndersteer', U)),
@@ -616,8 +608,7 @@ export class TuningPanel {
     ro('steer', kv([
       ['Turning circle', `${f1(A.turnDiameter)} m${vs(A.turnDiameter, S.turnDiameter, 1, -1)}`], ['Lock to lock', `${f1(A.lockToLock)} turns`],
     ]));
-    const mode = this.api.settings.get('steerAssist');
-    ss('assist', mode === 'slip' ? `slip ${pc(s.assist.slipGain)}` : mode === 'beamng' ? `BeamNG · oversteer ×${f2(s.assist.stab)}` : 'off in Settings');
+    ss('assist', this.api.settings.get('steerAssist') === 'beamng' ? `oversteer ×${f2(s.assist.stab)}` : 'off in Settings');
     ss('body', `${s.colliders.length} boxes`);
     ro('body', U.offroadGeo ? kv([
       ['Approach', `${f0(geo.approach)}°`], ['Departure', `${f0(geo.departure)}°`], ['Breakover', `${f0(geo.breakover)}°`],
