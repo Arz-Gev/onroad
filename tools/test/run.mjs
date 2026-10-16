@@ -119,7 +119,7 @@ test('S15 lets go of the wheel after a corner: returns to centre and drives stra
 
 const slide = (thr, release = 0.6) => {
   const c = makeCar();
-  c.v.P.assist.stabilization = false; // the car's own slide, without the oversteer assistant catching it
+  c.v.P.assist.stabilization = false; c.v.P.assist.slipMix = 0; // the car's own slide, no assist catching it
   launchTo(c, 50, 2);
   // About 15 degrees of lock at 50 km/h, what the old keyboard assist allowed; full lock (45) would scrub the car to a crawl.
   run(c, 2, () => ({ steer: -0.35, throttle: holdSpeed(c, 50) }));

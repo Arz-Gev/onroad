@@ -88,7 +88,7 @@ export class Vehicle {
 
     this.ctl = { throttle: 0, brake: 0, steer: 0, clutch: 0, handbrake: 0 };
     this.steerAngle = 0;
-    this.steerVel = 0; this.frontPath = 0; this.frontPathRate = 0;
+    this.steerVel = 0; this.frontPath = this.drift = this.driftRate = 0;
     this.revTimer = 0;
     this.gripG = 0.63;
     this.steerAssist = 'beamng';
@@ -247,9 +247,11 @@ export class Vehicle {
       car.wheelSpeed = Math.abs(this.speed); car.mu = this.gripG / 0.8;
       car.steerAngle = this.steerAngle; car.wheelbase = this.P.wheelbase;
       st = this.steerFilter.update(raw.analogSteer ? raw.steer : (raw.steerKey ?? raw.steer), raw.analogSteer, h, car);
-    } else st = raw.steer; // slip and no assist: the key ramp or the stick, as it is
+    } else st = raw.steer; // no assist: the key ramp or the stick, as it is
     if (!Number.isFinite(this.steerAngle)) this.steerAngle = 0;
-    const target = this.steerAssist === 'slip' ? this.slipSteer(st, h) : st * maxA, d = RACK_RATE * h;
+    // In BeamNG mode, slip-angle steering sits on top of the filter, blended in by assist.slipMix.
+    const mix = this.steerAssist === 'beamng' ? this.P.assist.slipMix : 0;
+    const target = mix > 0 ? (1 - mix) * st * maxA + mix * this.slipSteer(st, h) : st * maxA, d = RACK_RATE * h;
     // The wheels go to the target, as with BeamNG's steering hydro, limited only by the rack's speed.
     const a = Math.max(-maxA, Math.min(maxA, this.steerAngle + Math.max(-d, Math.min(d, target - this.steerAngle))));
     this.steerVel = (a - this.steerAngle) / h;
@@ -258,25 +260,34 @@ export class Vehicle {
   }
 
   // Slip-angle steering, as in Forza or Assetto Corsa's Gamepad FX: the input sets how hard the front tyres
-  // work, not the wheel angle. The wheels are aimed along the front axle's path plus st × the tyres' peak
-  // slip angle, so a released key lets them follow the slide and a full key holds the fronts at the peak.
-  // Following the path exactly leaves the fronts with no force, and the tail swings like a pendulum, so the
-  // wheels also lead the path by how fast it turns (slipDamp, seconds): the fronts push against the swing.
-  // At a crawl the path barely turns until the tyres build force, so below assist.slipSpeed it blends into
-  // plain steering (input × lock), and it is plain steering in reverse.
+  // work, not the wheel angle. A full key aims the wheels along the front axle's path plus the tyres' peak
+  // slip angle, so the fronts sit at their peak grip. A released key aims them along the drift angle (where
+  // the rear axle is sliding, less half the rear tyres' peak slip, which they use in any normal turn): zero
+  // in a normal turn, so the car straightens, the slide angle in a drift, so the wheels countersteer. Inputs in between blend the two. The released aim also leads the drift angle by
+  // how fast it changes (slipDamp, seconds), so the fronts push against the tail's swing instead of letting
+  // it pendulum. At a crawl the front's path barely turns until the tyres build force, so below
+  // assist.slipSpeed it blends into plain steering (input × lock), and it is plain steering in reverse.
   slipSteer(st, h) {
-    const A = this.P.assist, maxA = this.P.steer.maxAngle, w0 = this.wheels[0], w1 = this.wheels[1];
-    this.pointVel(_v2.addVectors(w0.hub, w1.hub).multiplyScalar(0.5), _v);
-    const vx = _v.dot(this.fwd), vy = _v.dot(this.right);
-    const path = vx > 0.05 ? Math.atan2(vy, vx) : 0;
-    const prev = this.frontPath;
-    this.frontPath += (path - this.frontPath) * Math.min(1, h / 0.03);
-    this.frontPathRate += ((this.frontPath - prev) / h - this.frontPathRate) * Math.min(1, h / 0.05);
-    if (!Number.isFinite(this.frontPath) || !Number.isFinite(this.frontPathRate)) this.frontPath = this.frontPathRate = 0;
-    const peak = Math.atan(((w0.aPk || w0.surf.aPeak) + (w1.aPk || w1.surf.aPeak)) / 2);
-    const slip = A.slipFollow * this.frontPath + A.slipDamp * this.frontPathRate + st * peak * A.slipGain;
-    const k = Math.max(0, Math.min(1, (vx - 0.3 * A.slipSpeed) / (0.7 * A.slipSpeed)));
-    return k * slip + (1 - k) * st * maxA;
+    const A = this.P.assist, maxA = this.P.steer.maxAngle, w = this.wheels;
+    const pathOf = (a, b) => {
+      this.pointVel(_v2.addVectors(a.hub, b.hub).multiplyScalar(0.5), _v);
+      const vx = _v.dot(this.fwd);
+      return [vx > 0.05 ? Math.atan2(_v.dot(this.right), vx) : 0, vx];
+    };
+    const [front, vx] = pathOf(w[0], w[1]), [rear] = pathOf(w[2], w[3]);
+    const k = Math.min(1, h / 0.03), prev = this.drift;
+    this.frontPath += (front - this.frontPath) * k;
+    this.drift += (rear - this.drift) * k;
+    this.driftRate += ((this.drift - prev) / h - this.driftRate) * Math.min(1, h / 0.05);
+    if (![this.frontPath, this.drift, this.driftRate].every(Number.isFinite)) this.frontPath = this.drift = this.driftRate = 0;
+    const peak = Math.atan(((w[0].aPk || w[0].surf.aPeak) + (w[1].aPk || w[1].surf.aPeak)) / 2) * A.slipGain;
+    const grip = 0.5 * Math.atan(((w[2].aPk || w[2].surf.aPeak) + (w[3].aPk || w[3].surf.aPeak)) / 2);
+    const d = this.drift, slide = Math.sign(d) * Math.max(0, Math.abs(d) - grip);
+    const free = A.slipFollow * slide + A.slipDamp * this.driftRate;
+    const full = this.frontPath + Math.sign(st) * peak;
+    const slip = free + (full - free) * Math.abs(st);
+    const m = Math.max(0, Math.min(1, (vx - 0.3 * A.slipSpeed) / (0.7 * A.slipSpeed)));
+    return m * slip + (1 - m) * st * maxA;
   }
 
   camber(w, sinC, sinK) {
@@ -753,7 +764,7 @@ export class Vehicle {
     d.lockup = 0;
     if (d.mode === 'auto') d.w[1] = 0;
     if (d.running) d.startGrace = Math.max(d.startGrace, 0.6);
-    this.steerFilter?.reset(); this.frontPath = this.frontPathRate = 0;
+    this.steerFilter?.reset(); this.frontPath = this.drift = this.driftRate = 0;
     this.snapGeometry();
     this.readBody();
     this._lastVel.set(0, 0, 0);
