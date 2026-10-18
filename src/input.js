@@ -138,6 +138,7 @@ export class Input {
     let clutch = this.down('ShiftLeft', 'ShiftRight') ? 1 : 0;
     let hb = this.down('Space') ? 1 : 0;
     r.analogSteer = false;
+    r.keyGas = up; r.keyBrake = dn; r.keyLeft = lt; r.keyRight = rt; r.padX = null; r.padGas = 0; r.padBrake = 0;
 
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = [...pads].find(p => p && p.connected);
@@ -172,6 +173,7 @@ export class Input {
         steer = Math.sign(dz(ax)) * Math.pow(Math.abs(dz(ax)), 1.4);
         thr = Math.max(thr, rtA); brk = Math.max(brk, ltA);
         r.analogSteer = true;
+        r.padX = ax; r.padGas = rtA; r.padBrake = ltA;
         if (gp.buttons[PAD.A]?.pressed) hb = 1;
         if (gp.buttons[PAD.LB]?.pressed) clutch = 1;
         for (const i in PAD_ACTION) if (edge(+i) && this.onAction) this.onAction(PAD_ACTION[i], 'pad');

@@ -6,6 +6,11 @@ export const DEFAULTS = {
   arcadeAuto: false,
   handbrake: 'hold',
   steerAssist: 'beamng',
+  physics: 'ac',
+  acCar: 's14',
+  acSteer: 'ac',
+  agaStrength: 0.5,
+  stability: 0,
   tyreCurve: 'pacejka',
   camera: 'chase',
   time: 13,
@@ -59,6 +64,10 @@ const CHOICES = {
   gearbox: ['auto', 'manual'],
   handbrake: ['hold', 'toggle', 'auto'],
   steerAssist: ['beamng', 'off'],
+  physics: ['ac', 'onroad'],
+  acCar: ['s14', 's13', '180sx'],
+  acSteer: ['ac', 'aga', 'off'],
+  stability: [0, 0.25, 0.5, 1],
   tyreCurve: ['pacejka', 'physx'],
   camera: ['chase', 'cockpit', 'hood', 'wheel', 'orbit'],
   speedUnit: ['kmh', 'mph'],
@@ -71,7 +80,7 @@ const CHOICES = {
   gTerrain: [0, 1, 2],
 };
 const RANGES = {
-  time: [0, 24], volume: [0, 1], hudScale: [0.7, 1.5], renderScale: [0.5, 1],
+  time: [0, 24], volume: [0, 1], agaStrength: [0, 1], hudScale: [0.7, 1.5], renderScale: [0.5, 1],
   gDpr: [1, 2], gViewDist: [0.6, 1.5],
 
   gGrass: [0.04, 0.96], gGrassHeight: [1.8, 3.9], gGrassWidth: [0.8, 2.4], gGrassNear: [42, 72], gGrassDist: [119, 287],

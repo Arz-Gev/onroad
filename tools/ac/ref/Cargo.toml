@@ -1,0 +1,13 @@
+# The reference: rustyAC's 1:1 port of Assetto Corsa's car (GPL-3.0-or-later) driven by a script, so the JS port
+# in src/ac can be compared with it step by step. See tools/ac/README.md.
+[package]
+name = "acref"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rustyac-physics = { git = "https://github.com/thesupersupersigma/rustyAC", rev = "78b8990077ba0a30fb42e46ef357472eff41cb69" }
+
+[profile.release]
+debug = false

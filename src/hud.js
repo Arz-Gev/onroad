@@ -64,7 +64,7 @@ export class HUD {
             </div>
           </div>
           <div class="lamps" id="h-lamps">${['eng', 'hb', 'tc', 'abs', 'light', 'haz', 'bar', 'snd'].map(id => `<span class="lamp" id="l-${id}" data-s="off" title="${LAMP_TITLES[id]}">${LAMP_ICONS[id === 'light' ? 'low' : id]}</span>`).join('')}</div>
-          <div class="cl-info"><span id="h-box"></span><span id="h-drive"></span><span id="h-psi"></span><span id="h-surf"></span></div>
+          <div class="cl-info"><span id="h-box"></span><span id="h-drive"></span><span id="h-psi"></span><span id="h-surf"></span><span id="h-aids" class="aids" title="Steering help · stability control (Esc → Settings → Driving aids)"></span></div>
         </div>
       </div>`;
     const $ = id => root.querySelector('#' + id);
@@ -77,7 +77,7 @@ export class HUD {
       gear: $('h-gear'), spd: $('h-spd'), unit: $('h-unit'),
       wheels: [...root.querySelectorAll('#h-car .w')], diffs: [...root.querySelectorAll('#h-car .df')],
       thr: $('p-thr'), brk: $('p-brk'), clu: $('p-clu'), cluWrap: $('p-cluwrap'),
-      box: $('h-box'), drive: $('h-drive'), psi: $('h-psi'), surf: $('h-surf'),
+      box: $('h-box'), drive: $('h-drive'), psi: $('h-psi'), surf: $('h-surf'), aids: $('h-aids'),
       lamp: Object.fromEntries(['eng', 'hb', 'tc', 'abs', 'light', 'haz', 'bar', 'snd'].map(id => [id, $('l-' + id)])),
     };
     this.sctx = $('h-suspcv').getContext('2d');
@@ -283,6 +283,7 @@ export class HUD {
       : `${d.rwd ? '2WD' : '4WD'} · ${d.range === 'low' ? 'Low' : 'High'}`;
     this.field(e.drive, 'drive', drive);
     this.field(e.psi, 'psi', fmtPressure(v.pressure, o.pressureUnit));
+    this.field(e.aids, 'aids', o.aids || '');
     let surf = 'Airborne';
     for (const w of v.wheels) if (w.contact) { surf = w.surf?.name || 'Ground'; break; }
     if (surf !== c.surf) { c.surf = surf; e.surf.textContent = surf; }

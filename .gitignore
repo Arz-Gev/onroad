@@ -5,3 +5,6 @@ dist/
 public/tracks/
 public/cars/
 cars and tracks/
+tools/ac/ref/target/
+tools/ac/out/
+/node_modules

@@ -24,6 +24,9 @@ import { buildTruck } from './vehicle/truckModel.js';
 import { VehicleView } from './vehicle/vehicleView.js';
 import { loadCarModel } from './vehicle/carModel.js';
 import { CarView } from './vehicle/carView.js';
+import { AcVehicle } from './ac/AcVehicle.js';
+import { AcCarView } from './ac/AcCarView.js';
+import { fetchCarFiles } from './ac/carFiles.js';
 import { CameraRig, CAM_MODES, CAM_NAMES } from './cameraRig.js';
 import { Input } from './input.js';
 import { HUD, fmtPressure, escapeHTML } from './hud.js';
@@ -37,7 +40,7 @@ import './ui.css';
 installShaderPatches();
 
 const H = 1 / 240;
-const MAX_STEPS = 16;
+const MAX_STEPS = 34;
 
 const loading = document.getElementById('loading');
 const loadLog = [];
@@ -93,12 +96,12 @@ async function main() {
 
   const scenery = { parts: [], configure(q) { for (const p of this.parts) p.configure?.(q); }, update(dt, cam, focus) { for (const p of this.parts) p.update?.(dt, cam, focus); } };
   const env = new Environment(renderer, scene, pipeline);
-  const colliderSurface = new Map();
+  const colliderSurface = new Map(), colliderKey = new Map();
   let terrain, terrainView = null, grass, water = null, props, trees, undergrowth = null, track = null, spawn;
   if (trackMode) {
     setLoading('Loading the track…', 0.3); await frame();
-    track = params.get('map') === 'flat' ? buildFlat({ RAPIER, world, colliderSurface })
-      : await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, renderer, trees: params.get('trees') === '1' });
+    track = params.get('map') === 'flat' ? buildFlat({ RAPIER, world, colliderSurface, colliderKey })
+      : await buildTrack(`${import.meta.env.BASE_URL}models/ebisu_north.glb`, { RAPIER, world, colliderSurface, colliderKey, renderer, trees: params.get('trees') === '1' });
     scene.add(track.group);
     terrain = track.terrain;
     spawn = track.spawn;
@@ -137,28 +140,63 @@ async function main() {
 
   setLoading('Building the car…', 0.68); await frame();
 
+  const settings = new Settings();
   const carId = params.get('car') === 'defender' ? 'defender' : 's15';
+  // The S15 runs Assetto Corsa's physics (src/ac) on an AC car's data files, or the hand-made Onroad model: the
+  // Physics and AC car data settings, or ?physics=ac|old and ?acdata=s14|s13|180sx for this load only.
+  const urlPhysics = { old: 'onroad', onroad: 'onroad', ac: 'ac' }[params.get('physics')];
+  const physics = carId === 's15' ? urlPhysics || settings.get('physics') : 'onroad';
+  const acData = physics === 'ac' ? (['s14', 's13', '180sx'].includes(params.get('acdata')) ? params.get('acdata') : settings.get('acCar')) : null;
   const tuningApi = {};
   const tuning = new TuningPanel(tuningApi, carId);
   const P = tuning.T.applySetup(tuning.T.make(), tuning.setup);
   const surfaceAt = (col, p) => (col && colliderSurface.get(col.handle)) || terrain.surfaceAt(p.x, p.z);
-  const spawnY = terrain.heightAt(spawn.x, spawn.z) + 0.12 + rideRaise(P);
-  const vehicle = new Vehicle(RAPIER, world, P, { position: { x: spawn.x, y: spawnY, z: spawn.z }, yaw: spawn.yaw, surfaceAt });
-  vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
-  world.step();
   const model = carId === 'defender'
     ? buildTruck(makeDefenderParams())
     : await loadCarModel(`${import.meta.env.BASE_URL}models/s15.glb`);
+  let vehicle;
+  if (acData) {
+    setLoading('Loading the Assetto Corsa car…', 0.72); await frame();
+    world.step();
+    const files = await fetchCarFiles(`${import.meta.env.BASE_URL}ac/cars/${acData}.json`);
+    const isGround = track?.isGround || (() => true);
+    const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+    vehicle = new AcVehicle(files, {
+      name: `S15 · AC ${acData.toUpperCase()} data`,
+      position: { x: spawn.x, y: terrain.heightAt(spawn.x, spawn.z), z: spawn.z }, yaw: spawn.yaw || 0,
+      rayGround(org, length) {
+        ray.origin.x = org[0]; ray.origin.y = org[1]; ray.origin.z = org[2];
+        const hit = world.castRayAndGetNormal(ray, length, true, undefined, undefined, undefined, undefined, isGround);
+        if (!hit) return null;
+        const t = hit.timeOfImpact ?? hit.toi;
+        return { pos: [org[0], org[1] - t, org[2]], normal: [hit.normal.x, hit.normal.y, hit.normal.z], collider: hit.collider };
+      },
+      surfaceKey: col => colliderKey.get(col.handle) || 'ROAD',
+      isGround,
+      projectPoint(p) {
+        const hit = world.projectPoint({ x: p[0], y: p[1], z: p[2] }, false);
+        return hit ? { point: [hit.point.x, hit.point.y, hit.point.z], collider: hit.collider } : null;
+      },
+      bodyBox: new THREE.Box3().setFromObject(model.body),
+      modelWheels: model.wheels,
+    });
+    world.timestep = vehicle.stepSize;
+  } else {
+    const spawnY = terrain.heightAt(spawn.x, spawn.z) + 0.12 + rideRaise(P);
+    vehicle = new Vehicle(RAPIER, world, P, { position: { x: spawn.x, y: spawnY, z: spawn.z }, yaw: spawn.yaw, surfaceAt });
+    vehicle.pressures = [tuning.setup.tyres.pressF, tuning.setup.tyres.pressR];
+    world.step();
+  }
   scene.add(model.root);
-  const view = carId === 'defender' ? new VehicleView(model, vehicle) : new CarView(model, vehicle);
-  const colliderView = new ColliderView(scene, model, vehicle);
+  const view = carId === 'defender' ? new VehicleView(model, vehicle) : acData ? new AcCarView(model, vehicle) : new CarView(model, vehicle);
+  const colliderView = acData ? { update() {}, setEnabled() {}, setSusp() {} } : new ColliderView(scene, model, vehicle);
   const d = vehicle.drivetrain;
+  const stepH = vehicle.stepSize || H;
 
   const rig = new CameraRig(camera, terrain);
   const input = new Input(canvas);
   const hud = new HUD();
   const audio = new GameAudio();
-  const settings = new Settings();
   const dust = new Dust(scene);
   dust.waterAt = (x, z) => terrain.waterLevelAt(x, z);
   const tracks = terrainView ? new Tracks(terrainView.material) : { stamp() {} };
@@ -199,7 +237,8 @@ async function main() {
     trees.updatePhysics(x, z);
     props.userData.stream.update(x, z);
     world.step();
-    vehicle.reset({ x, y: y + lift + rideRaise(vehicle.P), z }, yaw);
+    if (acData) vehicle.reset({ x, y: y + (lift > 0.6 ? 0.3 : 0), z }, yaw);
+    else vehicle.reset({ x, y: y + lift + rideRaise(vehicle.P), z }, yaw);
     prevPos.copy(vehicle.pos); curPos.copy(vehicle.pos); prevQ.copy(vehicle.quat); curQ.copy(vehicle.quat);
     rig.first = true;
     game.redraw = 3;
@@ -270,8 +309,23 @@ async function main() {
       if (!o.silent) notify('setting', { text: { hold: 'Handbrake: hold the key', toggle: 'Handbrake: press on, press off', auto: 'Handbrake: tap toggles, long press holds' }[v] });
     },
     steerAssist(v, o) {
+      if (acData) return;
       vehicle.steerAssist = v;
-      if (!o.silent) notify('setting', { text: { beamng: 'Steering assist: BeamNG filter', off: 'Steering assist off: full lock at any speed' }[v] });
+      showAids();
+      if (!o.silent) notify('setting', { text: { beamng: 'Steering help: BeamNG filter', off: 'Steering help off: full lock at any speed' }[v] });
+    },
+    acSteer(v, o) {
+      if (!acData) return;
+      vehicle.setSteerHelp(v);
+      showAids();
+      if (!o.silent) notify('setting', { text: { ac: "Steering help: Assetto Corsa's own keyboard and pad handling", aga: 'Steering help: drift assist (Advanced Gamepad Assist)', off: 'Steering help off: keys and stick go straight to the wheels' }[v] });
+    },
+    agaStrength(v) { if (acData) vehicle.aga.strength = v; },
+    stability(v, o) {
+      if (!acData) return;
+      vehicle.stability = v;
+      showAids();
+      if (!o.silent) notify('setting', { text: v ? `Stability control ${Math.round(v * 100)}%` : 'Stability control off' });
     },
     tyreCurve(v, o) {
       setTyreCurve(v);
@@ -304,6 +358,13 @@ async function main() {
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
+  // the HUD line that says which steering help is working
+  function showAids() {
+    const steer = acData ? { ac: 'AC steering', aga: 'Drift assist', off: 'Direct steering' }[settings.get('acSteer')]
+      : settings.get('steerAssist') === 'beamng' ? 'BeamNG steering' : 'Direct steering';
+    const esc = acData && settings.get('stability') ? ` · ESC ${Math.round(settings.get('stability') * 100)}%` : '';
+    hud.configure({ aids: steer + esc });
+  }
   function uiColor(v, o) {
     if (!o.sync && !o.startup && !o.reset && settings.get('uiPalette') !== 'custom') settings.set('uiPalette', 'custom', { silent: true });
     applyUi();
@@ -375,7 +436,7 @@ async function main() {
     mute: () => toggle('muted'),
     suspension: () => toggle('suspension'),
     telemetry: () => toggle('telemetry'),
-    tuning: () => tuning.toggle(),
+    tuning: () => (acData ? notify('setting', { text: 'Assetto Corsa car: the setup comes from its data files' }) : tuning.toggle()),
   };
   input.onAction = id => { if (ACTIONS[id]) ACTIONS[id](); };
   game.action = id => input.onAction(id);
@@ -389,14 +450,26 @@ async function main() {
     input.uiHandler = p ? ev => menu.handle(ev) : null;
     game.redraw = 3;
   }
+  const reloadWith = (key, v) => {
+    settings.set(key, v, { silent: true });
+    const u = new URL(location.href);
+    u.searchParams.delete(key === 'physics' ? 'physics' : 'acdata');
+    if (key === 'physics') u.searchParams.delete('acdata');
+    location.replace(u.href);
+  };
   const menu = new Menu({
     carId,
+    physics,
     locations: teleports,
     device: () => input.device,
     get(key) {
       switch (key) {
         case 'gearbox': return d.mode;
         case 'autoClutch': return d.clutchAssist;
+        case 'physics': return physics;
+        case 'acCar': return acData;
+        case 'tc': return !!vehicle.tc;
+        case 'abs': return !!vehicle.abs;
         case 'arcadeAuto': return !!settings.get('arcadeAuto');
         case 'camera': return rig.mode;
         case 'timeQuick': return quickTime(settings.get('time')) || '';
@@ -415,7 +488,10 @@ async function main() {
     },
     set(key, v) {
       const silent = { silent: true };
-      if (key === 'sound') settings.set('muted', !v, silent);
+      if (key === 'physics' || key === 'acCar') { if (v !== (key === 'physics' ? physics : acData)) reloadWith(key, v); }
+      else if (key === 'tc') vehicle.tc = !!v;
+      else if (key === 'abs') vehicle.abs = !!v;
+      else if (key === 'sound') settings.set('muted', !v, silent);
       else if (key === 'headlights') setHeadlights(v, true);
       else if (key === 'lightBar') view.lights.bar = !!v;
       else if (key === 'hazards') view.lights.hazard = !!v;
@@ -487,16 +563,16 @@ async function main() {
     if (!paused) {
       acc += dt;
       let steps = 0;
-      while (acc >= H && steps < MAX_STEPS) {
+      while (acc >= stepH && steps < MAX_STEPS) {
         prevPos.copy(curPos); prevQ.copy(curQ);
-        vehicle.step(H, raw);
+        vehicle.step(stepH, raw);
         world.step();
         const t = vehicle.body.translation(), q = vehicle.body.rotation();
         curPos.set(t.x, t.y, t.z); curQ.set(q.x, q.y, q.z, q.w);
         trees.updatePhysics(t.x, t.z);
         props.userData.stream.update(t.x, t.z);
-        tracks.stamp(vehicle, H);
-        acc -= H;
+        tracks.stamp(vehicle, stepH);
+        acc -= stepH;
         steps++;
       }
       if (steps === MAX_STEPS) acc = 0;
@@ -509,7 +585,7 @@ async function main() {
     const draw = !paused || game.redraw > 0 || env.active;
     if (game.redraw > 0) game.redraw--;
     if (draw) {
-      const alpha = acc / H;
+      const alpha = acc / stepH;
       rPos.lerpVectors(prevPos, curPos, alpha);
       rQ.slerpQuaternions(prevQ, curQ, alpha);
       view.update(rPos, rQ, paused ? 0 : dt, { night: env.night, darkness: env.darkness, shadows: true });
@@ -534,7 +610,7 @@ async function main() {
       cam: rig.mode, paused, raw,
       telemetry: () => `steps/frame ${game.stepsPerFrame}  cam ${rig.mode}  time ${env.hourText}\npos ${vehicle.pos.x.toFixed(1)} ${vehicle.pos.y.toFixed(1)} ${vehicle.pos.z.toFixed(1)}`,
     });
-    tuning.update(dt, vehicle, raw);
+    if (!acData) tuning.update(dt, vehicle, raw);
     mark('hud');
     if (draw && render) pipeline.render(paused ? 1 / 60 : dt);
     mark('render');

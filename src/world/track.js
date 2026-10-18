@@ -29,7 +29,7 @@ function addDetail(m, dir, aniso) {
   m.customProgramCacheKey = () => 'track-detail';
 }
 
-export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer, trees = false }) {
+export async function buildTrack(url, { RAPIER, world, colliderSurface, colliderKey = new Map(), renderer, trees = false }) {
   const gltf = await loader.loadAsync(url);
   const root = gltf.scene;
   const info = root.userData || {};
@@ -66,6 +66,7 @@ export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer
       if (GROUND.has(key)) desc.setCollisionGroups(GROUP_GROUND);
       const col = world.createCollider(desc);
       colliderSurface.set(col.handle, surf);
+      colliderKey.set(col.handle, key);
       if (GROUND.has(key)) ground.add(col.handle);
     });
   }
@@ -94,14 +95,15 @@ export async function buildTrack(url, { RAPIER, world, colliderSurface, renderer
     spot('AC_PIT_0', 'Pit area', 'Paddock', 'The paddock. Room to warm up the tyres.'),
   ].filter(Boolean);
 
-  return { group: root, terrain, teleports, info, spawn: teleports[0] || { x: 0, z: 0, yaw: 0 } };
+  return { group: root, terrain, teleports, info, isGround, spawn: teleports[0] || { x: 0, z: 0, yaw: 0 } };
 }
 
-export function buildFlat({ RAPIER, world, colliderSurface }) {
+export function buildFlat({ RAPIER, world, colliderSurface, colliderKey = new Map() }) {
   const size = 20000;
   const col = world.createCollider(RAPIER.ColliderDesc.cuboid(size / 2, 1, size / 2).setTranslation(0, -1, 0)
     .setFriction(0.9).setRestitution(0.05).setCollisionGroups(GROUP_GROUND));
   colliderSurface.set(col.handle, SURFACES.asphalt);
+  colliderKey.set(col.handle, 'ROAD');
 
   const c = document.createElement('canvas');
   c.width = c.height = 1024;
@@ -125,5 +127,5 @@ export function buildFlat({ RAPIER, world, colliderSurface }) {
 
   const terrain = { heightAt: () => 0, surfaceAt: () => SURFACES.asphalt, waterLevelAt: () => -Infinity, trailCurves: [] };
   const spawn = { name: 'Centre', tag: 'Flat', title: 'Centre', desc: 'The middle of the test pad.', x: 0, z: 0, yaw: 0 };
-  return { group, terrain, teleports: [spawn], info: {}, spawn };
+  return { group, terrain, teleports: [spawn], info: {}, spawn, isGround: c => c.handle === col.handle };
 }
