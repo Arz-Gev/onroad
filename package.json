@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tools/test/run.mjs"
+    "test": "node tools/test/run.mjs",
+    "ac:ref": "cargo build --release --manifest-path tools/ac/ref/Cargo.toml",
+    "ac:compare": "node tools/ac/compare.mjs",
+    "ac:pack": "node tools/ac/pack.mjs reference/ac-cars/declan_byrne_nissan_silvia_s14 public/ac/cars/s14.json && node tools/ac/pack.mjs reference/ac-cars/13_pub_nakamura public/ac/cars/s13.json && node tools/ac/pack.mjs reference/ac-cars/duane_mckeever25_nissan_180sx public/ac/cars/180sx.json"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
