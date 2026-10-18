@@ -17,7 +17,7 @@ The S15 drives on it by default, built from an AC car's data files.
 | `suspension.js` | Double wishbone (5 rods) and MacPherson strut (2 rods, steering rod, strut body on a slider and ball joint), springs, dampers, bump stops, packers, anti-roll bars |
 | `powertrain.js` | Engine with turbos and `ctrl_*.ini` controllers, 2WD drivetrain (clutch, gearbox, LSD / spool), auto clutch, auto blip, auto shifter, brakes, aero (wings, fins, or the DATA body), aids (TC, ABS, EDL, stability, pit limiter) |
 | `car.js` | The car, stepped at 3 ms in `Car::step` / `Car::stepComponents` order, then the ODE step |
-| `AcVehicle.js`, `AcCarView.js` | The bridge to the game: tyre rays into the Rapier track, AC surfaces (`surfaces.js`), body contacts against walls, the fields the HUD / audio / effects / camera read, the model's wheels on the AC wheel carriers |
+| `AcVehicle.js`, `AcCarView.js` | The bridge to the game: tyre rays into the Rapier track, AC surfaces (`surfaces.js`), body contacts against walls, the fields the HUD / audio / effects / camera read, the model's wheels on the AC wheel carriers, Y / B as AC's TC / ABS assist "on" (fits the aid to a car without it; ABS starts on) |
 
 Not ported yet: rigid rear axle (AXLE) and multilink (ML) suspensions, AWD / AWD2, tyres.ini below VERSION 10,
 the setup screen's rounding of setup values, collision damage, KERS / ERS, DRS, wind, slipstream. AC's car

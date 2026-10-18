@@ -39,6 +39,7 @@ export class AcVehicle {
     this.indep = true;
     this.env = defaultEnv();
     this.car = new AcCar(files, { ground: this.#ground(), env: this.env });
+    this.abs = true; // like the old S15: ABS on, TC as the car's file says (B / Y switch them)
     this.sessionTime = 0;
     const c = this.car;
 
@@ -132,11 +133,13 @@ export class AcVehicle {
     }
   }
 
-  // the aids the car's electronics.ini has (a car without them keeps them off)
+  // the keys set AC's assist options "on" / "off" (cfg/assists.ini): "on" also fits the aid to a car
+  // whose electronics.ini has none. Such a file gives a slip limit of 0 (the aid would cut all the time),
+  // so then the limit is AC's constructor default, 0.2.
   get tc() { const t = this.car.aids.tc; return t.present && t.active; }
-  set tc(on) { const t = this.car.aids.tc; if (t.present) t.active = !!on; }
+  set tc(on) { const t = this.car.aids.tc; t.present = t.active = !!on; if (!(t.limit > 0)) t.limit = 0.2; }
   get abs() { const a = this.car.aids.abs; return a.present && a.active; }
-  set abs(on) { const a = this.car.aids.abs; if (a.present) a.active = !!on; }
+  set abs(on) { const a = this.car.aids.abs; a.present = a.active = !!on; if (!(a.limit > 0)) a.limit = 0.2; }
 
   get pressure() { return this.car.tyres[0].status.pressureStatic; }
   get pressures() { return [this.car.tyres[0].status.pressureStatic, this.car.tyres[2].status.pressureStatic]; }
