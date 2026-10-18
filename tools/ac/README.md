@@ -4,8 +4,8 @@
 [rustyAC](https://github.com/thesupersupersigma/rustyAC) (a line-by-line Rust port of `acs.exe`, rev `78b8990`).
 The S15 drives on it by default, built from an AC car's data files.
 
-- `?acdata=s14` (default), `s13`, `180sx`: which AC car's data the S15 uses (packed in `public/ac/cars/`).
-- `?physics=old`: the old hand-made S15 physics.
+Settings → Car → Physics (Assetto Corsa / Onroad) and AC car data (S14 / S13 / 180SX, packed in `public/ac/cars/`)
+pick them; `?physics=ac|old` and `?acdata=s14|s13|180sx` override them for one load.
 
 ## What is ported
 
@@ -17,7 +17,8 @@ The S15 drives on it by default, built from an AC car's data files.
 | `suspension.js` | Double wishbone (5 rods) and MacPherson strut (2 rods, steering rod, strut body on a slider and ball joint), springs, dampers, bump stops, packers, anti-roll bars |
 | `powertrain.js` | Engine with turbos and `ctrl_*.ini` controllers, 2WD drivetrain (clutch, gearbox, LSD / spool), auto clutch, auto blip, auto shifter, brakes, aero (wings, fins, or the DATA body), aids (TC, ABS, EDL, stability, pit limiter) |
 | `car.js` | The car, stepped at 3 ms in `Car::step` / `Car::stepComponents` order, then the ODE step |
-| `AcVehicle.js`, `AcCarView.js` | The bridge to the game: tyre rays into the Rapier track, AC surfaces (`surfaces.js`), body contacts against walls, the fields the HUD / audio / effects / camera read, the model's wheels on the AC wheel carriers, Y / B as AC's TC / ABS assist "on" (fits the aid to a car without it; ABS starts on) |
+| `controls.js` | Keys and pad to steering / gas / brake, the menu's "Steering help": AC's own `KeyboardCarControl` (speed-limited steering, gas that backs off on wheelspin, brake at `RaceEngineer::getOptimalBrake`) and `JoypadCarControl` (stock gamepad preset); or a port of [Advanced Gamepad Assist](https://github.com/adam10603/AC-Advanced-Gamepad-Assist) 1.5.5 (MIT, `LICENSE-advanced-gamepad-assist`): steering limit at the front tyres' peak slip angle, self-steer in slides, keyboard gas / brake help, with its steering calibration run on a copy of the car at load; or the raw input |
+| `AcVehicle.js`, `AcCarView.js` | The bridge to the game: tyre rays into the Rapier track, AC surfaces (`surfaces.js`), body contacts against walls, the fields the HUD / audio / effects / camera read, the model's wheels on the AC wheel carriers, Y / B as AC's TC / ABS assist "on" (fits the aid to a car without it; ABS starts on), AC's stability control assist (Settings → Driving aids) |
 
 Not ported yet: rigid rear axle (AXLE) and multilink (ML) suspensions, AWD / AWD2, tyres.ini below VERSION 10,
 the setup screen's rounding of setup values, collision damage, KERS / ERS, DRS, wind, slipstream. AC's car
@@ -42,4 +43,5 @@ port in 64-bit, and the tiny rounding differences grow there. No quantity jumps 
 
 ## Licence
 
-rustyAC's physics is GPL-3.0-or-later (its ODE port BSD-3-Clause), and `src/ac/` is derived from it.
+rustyAC's physics is GPL-3.0-or-later (its ODE port BSD-3-Clause), and `src/ac/` is derived from it. The Advanced
+Gamepad Assist part of `controls.js` is MIT (© 2023 Adam D., `src/ac/LICENSE-advanced-gamepad-assist`).

@@ -140,10 +140,13 @@ async function main() {
 
   setLoading('Building the car…', 0.68); await frame();
 
+  const settings = new Settings();
   const carId = params.get('car') === 'defender' ? 'defender' : 's15';
-  // The S15 runs Assetto Corsa's physics (src/ac) on an AC car's data files (?acdata=s14|s13|180sx, the S14 by
-  // default); ?physics=old brings back the hand-made S15 model.
-  const acData = carId === 's15' && params.get('physics') !== 'old' ? (params.get('acdata') || 's14') : null;
+  // The S15 runs Assetto Corsa's physics (src/ac) on an AC car's data files, or the hand-made Onroad model: the
+  // Physics and AC car data settings, or ?physics=ac|old and ?acdata=s14|s13|180sx for this load only.
+  const urlPhysics = { old: 'onroad', onroad: 'onroad', ac: 'ac' }[params.get('physics')];
+  const physics = carId === 's15' ? urlPhysics || settings.get('physics') : 'onroad';
+  const acData = physics === 'ac' ? (['s14', 's13', '180sx'].includes(params.get('acdata')) ? params.get('acdata') : settings.get('acCar')) : null;
   const tuningApi = {};
   const tuning = new TuningPanel(tuningApi, carId);
   const P = tuning.T.applySetup(tuning.T.make(), tuning.setup);
@@ -194,7 +197,6 @@ async function main() {
   const input = new Input(canvas);
   const hud = new HUD();
   const audio = new GameAudio();
-  const settings = new Settings();
   const dust = new Dust(scene);
   dust.waterAt = (x, z) => terrain.waterLevelAt(x, z);
   const tracks = terrainView ? new Tracks(terrainView.material) : { stamp() {} };
@@ -307,8 +309,23 @@ async function main() {
       if (!o.silent) notify('setting', { text: { hold: 'Handbrake: hold the key', toggle: 'Handbrake: press on, press off', auto: 'Handbrake: tap toggles, long press holds' }[v] });
     },
     steerAssist(v, o) {
+      if (acData) return;
       vehicle.steerAssist = v;
-      if (!o.silent) notify('setting', { text: { beamng: 'Steering assist: BeamNG filter', off: 'Steering assist off: full lock at any speed' }[v] });
+      showAids();
+      if (!o.silent) notify('setting', { text: { beamng: 'Steering help: BeamNG filter', off: 'Steering help off: full lock at any speed' }[v] });
+    },
+    acSteer(v, o) {
+      if (!acData) return;
+      vehicle.setSteerHelp(v);
+      showAids();
+      if (!o.silent) notify('setting', { text: { ac: "Steering help: Assetto Corsa's own keyboard and pad handling", aga: 'Steering help: drift assist (Advanced Gamepad Assist)', off: 'Steering help off: keys and stick go straight to the wheels' }[v] });
+    },
+    agaStrength(v) { if (acData) vehicle.aga.strength = v; },
+    stability(v, o) {
+      if (!acData) return;
+      vehicle.stability = v;
+      showAids();
+      if (!o.silent) notify('setting', { text: v ? `Stability control ${Math.round(v * 100)}%` : 'Stability control off' });
     },
     tyreCurve(v, o) {
       setTyreCurve(v);
@@ -341,6 +358,13 @@ async function main() {
     speedUnit: hudOpt, pressureUnit: hudOpt, cluster: hudOpt, hudScale: hudOpt, hints: hudOpt, suspension: hudOpt, telemetry: hudOpt, fps: hudOpt,
   };
   function hudOpt(v, o, key) { hud.configure({ [key]: v }); }
+  // the HUD line that says which steering help is working
+  function showAids() {
+    const steer = acData ? { ac: 'AC steering', aga: 'Drift assist', off: 'Direct steering' }[settings.get('acSteer')]
+      : settings.get('steerAssist') === 'beamng' ? 'BeamNG steering' : 'Direct steering';
+    const esc = acData && settings.get('stability') ? ` · ESC ${Math.round(settings.get('stability') * 100)}%` : '';
+    hud.configure({ aids: steer + esc });
+  }
   function uiColor(v, o) {
     if (!o.sync && !o.startup && !o.reset && settings.get('uiPalette') !== 'custom') settings.set('uiPalette', 'custom', { silent: true });
     applyUi();
@@ -426,14 +450,26 @@ async function main() {
     input.uiHandler = p ? ev => menu.handle(ev) : null;
     game.redraw = 3;
   }
+  const reloadWith = (key, v) => {
+    settings.set(key, v, { silent: true });
+    const u = new URL(location.href);
+    u.searchParams.delete(key === 'physics' ? 'physics' : 'acdata');
+    if (key === 'physics') u.searchParams.delete('acdata');
+    location.replace(u.href);
+  };
   const menu = new Menu({
     carId,
+    physics,
     locations: teleports,
     device: () => input.device,
     get(key) {
       switch (key) {
         case 'gearbox': return d.mode;
         case 'autoClutch': return d.clutchAssist;
+        case 'physics': return physics;
+        case 'acCar': return acData;
+        case 'tc': return !!vehicle.tc;
+        case 'abs': return !!vehicle.abs;
         case 'arcadeAuto': return !!settings.get('arcadeAuto');
         case 'camera': return rig.mode;
         case 'timeQuick': return quickTime(settings.get('time')) || '';
@@ -452,7 +488,10 @@ async function main() {
     },
     set(key, v) {
       const silent = { silent: true };
-      if (key === 'sound') settings.set('muted', !v, silent);
+      if (key === 'physics' || key === 'acCar') { if (v !== (key === 'physics' ? physics : acData)) reloadWith(key, v); }
+      else if (key === 'tc') vehicle.tc = !!v;
+      else if (key === 'abs') vehicle.abs = !!v;
+      else if (key === 'sound') settings.set('muted', !v, silent);
       else if (key === 'headlights') setHeadlights(v, true);
       else if (key === 'lightBar') view.lights.bar = !!v;
       else if (key === 'hazards') view.lights.hazard = !!v;

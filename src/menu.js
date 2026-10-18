@@ -17,14 +17,25 @@ const tip = (label, id) => escapeHTML(id && keyText(id) ? `${label} · ${keyText
 const fmtClock = min => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 const row = (key, label, type, extra = {}) => ({ key, label, type, ...extra });
 const SECTIONS = [
-  { title: 'Driving', col: 1, rows: [
+  { title: 'Car', col: 1, rows: [
+    row('physics', 'Physics', 'seg', { car: 's15', options: [['ac', 'Assetto Corsa'], ['onroad', 'Onroad']], note: 'Assetto Corsa: Assetto Corsa\'s car physics, ported from the game, running an AC car\'s data. Onroad: this game\'s own hand-made physics, tuned in Tuning (Tab). Switching reloads the game.' }),
+    row('acCar', 'AC car data', 'seg', { phys: 'ac', options: [['s14', 'S14'], ['s13', 'S13'], ['180sx', '180SX']], note: 'Whose engine, gearbox, suspension and tyres the S15 runs on: three Assetto Corsa drift-car mods. S14: about 650 hp, a welded diff. S13: the gentlest. 180SX: the most torque. Switching reloads the game.' }),
+    row('tyreCurve', 'Tyre grip curve', 'seg', { phys: 'onroad', options: [['pacejka', 'Falls off'], ['physx', 'Flat (PhysX)']], note: 'Falls off: past the peak slip the tyre loses some grip, as real tyres do. Flat: PhysX Vehicle2\'s curve, grip rises to the peak and stays there, so slides are steadier.' }),
+    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
+  ] },
+  { title: 'Driving aids', col: 1, rows: [
+    row('acSteer', 'Steering help', 'seg', { phys: 'ac', options: [['ac', 'AC'], ['aga', 'Drift assist'], ['off', 'Off']], note: 'AC: Assetto Corsa\'s own keyboard and gamepad handling. On keys: less lock as speed rises, the gas eases off while the rear tyres spin, the brake stops just short of locking. On a pad: less lock at speed, a smoothed stick.<br>Drift assist: Advanced Gamepad Assist, the community script for AC. It steers to the front tyres\' grip limit and countersteers by itself when the rear slides; on keys it also eases the gas and brake at the limit (unless TC / ABS do it).<br>Off: keys and stick turn the wheels directly.' }),
+    row('agaStrength', 'Drift assist strength', 'range', { phys: 'ac', min: 0, max: 100, step: 5, scale: 100, unit: '%', note: 'Higher: the car countersteers harder by itself and the steering stays nearer the grip limit, calmer. Lower: looser, more angle, easier to overdo. 50% is the script\'s default.' }),
+    row('steerAssist', 'Steering help', 'seg', { phys: 'onroad', options: [['beamng', 'BeamNG'], ['off', 'Off']], note: 'BeamNG: BeamNG.drive\'s keyboard and gamepad steering filter with its assists (slower and less lock at speed, adds countersteer in a slide), tuned in Tuning (Tab) → Steering assist. Off: the key or stick turns the wheels directly, full lock at any speed.' }),
+    row('tc', 'Traction control', 'switch', { hot: 'traction', note: 'Cuts the engine while a driven wheel spins. Off lets you spin the rear wheels to drift.' }),
+    row('abs', 'ABS', 'switch', { hot: 'abs', note: 'Releases a wheel that starts to lock under braking, so you can still steer.' }),
+    row('stability', 'Stability control', 'seg', { phys: 'ac', options: [[0, 'Off'], [0.25, '25%'], [0.5, '50%'], [1, '100%']], note: 'Assetto Corsa\'s stability assist: a push that turns the car back towards where it is going when it starts to spin. Off for drifting.' }),
+  ] },
+  { title: 'Gearbox', col: 1, rows: [
     row('gearbox', 'Gearbox', 'seg', { hot: 'gearbox', options: [['auto', 'Automatic'], ['manual', 'Manual']] }),
     row('autoClutch', 'Auto-clutch', 'switch', { hot: 'autoClutch', note: 'Off: hold Shift for the clutch.' }),
     row('arcadeAuto', 'Arcade automatic', 'switch', { hot: 'autoClutch', note: 'On: hold the brake at a stop to reverse. Off: select R with E / Q like a real car; W is always the gas, S the brake.' }),
     row('handbrake', 'Handbrake', 'seg', { options: [['hold', 'Hold'], ['toggle', 'Toggle'], ['auto', 'Auto']], note: 'Hold: while the key is down. Toggle: press on, press off. Auto: a short tap toggles, a long press holds.' }),
-    row('steerAssist', 'Steering assist', 'seg', { options: [['beamng', 'BeamNG'], ['off', 'Off']], note: 'BeamNG: BeamNG.drive\'s keyboard and gamepad steering filter with its assists, tuned in Tuning (Tab) → Steering assist. Off: the key or stick turns the wheels directly, full lock at any speed.' }),
-    row('tyreCurve', 'Tyre grip curve', 'seg', { options: [['pacejka', 'Falls off'], ['physx', 'Flat (PhysX)']], note: 'Falls off: past the peak slip the tyre loses some grip, as real tyres do. Flat: PhysX Vehicle2\'s curve, grip rises to the peak and stays there, so slides are steadier.' }),
-    row('pressure', 'Tyre pressure', 'stepper', { hot: ['pressureDown', 'pressureUp'], note: 'Lower: a bigger footprint and a softer slide. Higher: sharper, less grip.' }),
   ] },
   { title: 'View', col: 2, rows: [
     row('camera', 'Camera', 'seg', { hot: 'camera', options: [['chase', 'Chase'], ['cockpit', 'Cockpit'], ['hood', 'Hood'], ['wheel', 'Wheel'], ['orbit', 'Orbit']] }),
@@ -35,7 +46,7 @@ const SECTIONS = [
     row('sound', 'Sound', 'switch', { hot: 'mute' }),
     row('volume', 'Volume', 'range', { min: 0, max: 100, step: 5, scale: 100, unit: '%' }),
   ] },
-  { title: 'Vehicle', col: 1, rows: [
+  { title: 'Vehicle', col: 2, rows: [
     row('headlights', 'Headlights', 'seg', { hot: 'headlights', options: [[0, 'Off'], [1, 'Low'], [2, 'High']] }),
     row('lightBar', 'Light bar', 'switch', { hot: 'lightBar', car: 'defender' }),
     row('hazards', 'Hazard lights', 'switch', { hot: 'hazards' }),
@@ -190,10 +201,10 @@ export class Menu {
       if (r.type === 'buttons') return `<div class="btns">${r.buttons.map(([a, l]) => `<button type="button" class="btn small" data-action="${a}">${l}</button>`).join('')}</div>`;
       return '';
     };
-    const car = this.api.carId;
+    const car = this.api.carId, phys = this.api.physics || 'onroad';
 
     const col = c => sections.filter(s => (s.col || 1) === c).map(s => `
-      <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => !r.car || r.car === car).map(r => `
+      <div class="set-sec"><h2>${s.title}</h2>${s.rows.filter(r => (!r.car || r.car === car) && (!r.phys || r.phys === phys)).map(r => `
         <div class="set-row${r.label ? '' : ' bare'}${r.quick ? ' quick' : ''}" data-key="${r.key}">
           ${r.label ? `<div class="set-l"><div class="set-t">${r.label}${r.hot ? `<span class="kc">${hotHTML(r.hot)}</span>` : ''}${r.note ? `<span class="set-info" tabindex="-1">${icon('info')}<span class="set-n">${r.note}</span></span>` : ''}</div></div>` : ''}
           <div class="set-c">${ctl(r)}</div>
@@ -269,6 +280,8 @@ export class Menu {
     const qt = api.get('qualityNote');
     if (qn && qt && qn.textContent !== qt) qn.textContent = qt;
 
+    const aga = this.panes.settings.querySelector('[data-key="agaStrength"]');
+    if (aga) aga.hidden = api.get('acSteer') !== 'aga';
     const manual = api.get('gearbox') === 'manual';
     this.panes.settings.querySelector('[data-key="autoClutch"]').hidden = !manual;
     this.panes.settings.querySelector('[data-key="arcadeAuto"]').hidden = manual;

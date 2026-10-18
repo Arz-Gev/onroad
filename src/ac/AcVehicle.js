@@ -12,8 +12,10 @@ import { acSurface } from './surfaces.js';
 import { IniReader } from './ini.js';
 import { surfaceParameters, CONTACT_APPROX1_1, CONTACT_APPROX1_2, CONTACT_SOFT_CFM, CONTACT_SOFT_ERP, CONTACT_BOUNCE } from './ode.js';
 import { SURFACES } from '../vehicle/tire.js';
+import { AcKeyboard, AcPad, AgaAssist, optimalBrake, calibrateSteering } from './controls.js';
 
 const STEP = 0.003;
+const AGA_DT = 0.015;
 const HALF_TURN = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 const FX_OF = { ROAD: 'asphalt', KERB: 'kerb', GRASS: 'grass', SAND: 'sand', WALL: 'concrete', WAL: 'concrete' };
 // AC's contact materials (PhysicsCore::onCollision): the car's collider mesh against the world, and a floor box on
@@ -64,7 +66,8 @@ export class AcVehicle {
     this.ctl = { throttle: 0, brake: 0, handbrake: 0, steer: 0, clutch: 0 };
     this.steerAngle = 0;
     this.tcActive = 0; this.absActive = 0;
-    this.keySteer = 0;
+    this.steerHelp = 'ac';
+    this.acKeys = new AcKeyboard(); this.acPad = new AcPad(); this.aga = new AgaAssist(files);
     this.pendingShift = 0;
     this.lastVel = new THREE.Vector3();
     this.body = { translation: () => this.pos, rotation: () => this.quat };
@@ -150,6 +153,46 @@ export class AcVehicle {
   }
   yaw() { return Math.atan2(-this.fwd.x, -this.fwd.z); }
 
+  // the steering help ("Steering help" in the menu): AC's own keyboard / pad classes, Advanced Gamepad Assist, or
+  // the raw input (src/ac/controls.js)
+  #drive(dt, raw, swap) {
+    const c = this.car, ctl = c.controls, mode = raw.keyGas === undefined ? 'off' : this.steerHelp;
+    const pad = !!raw.analogSteer;
+    let kGas = !!raw.keyGas, kBrake = !!raw.keyBrake, pGas = raw.padGas || 0, pBrake = raw.padBrake || 0;
+    if (swap) { [kGas, kBrake] = [kBrake, kGas]; [pGas, pBrake] = [pBrake, pGas]; }
+    if (mode === 'ac') {
+      if (pad) ctl.steer = this.acPad.steer(raw.padX, ctl.steer, c.speed, c.steerLock);
+      else ctl.steer = this.acKeys.steering(raw.keyLeft, raw.keyRight, dt, c.speed);
+      const g = this.acKeys.gas(kGas, c, dt), b = kBrake ? Math.max(0, Math.min(1, optimalBrake(c))) : 0;
+      return { gas: Math.max(g, pGas), brake: Math.max(b, pBrake) };
+    }
+    if (mode === 'aga') {
+      // the script runs at a game-frame rate (its smoothing and slip prediction are tuned for that)
+      this.agaTime = (this.agaTime || 0) + dt;
+      if (this.agaTime >= AGA_DT - 1e-9) {
+        this.aga.update(c, { left: raw.keyLeft, right: raw.keyRight, gas: kGas, brake: kBrake, stick: pad ? raw.padX : null, padGas: pGas, padBrake: pBrake }, this.tc, this.abs, this.agaTime);
+        this.agaTime = 0;
+      }
+      ctl.steer = this.aga.out.steer;
+      return { gas: this.aga.out.gas, brake: this.aga.out.brake };
+    }
+    ctl.steer = Math.max(-1, Math.min(1, raw.steer || 0));
+    let gas = raw.throttle || 0, brake = raw.brake || 0;
+    if (swap) [gas, brake] = [brake, gas];
+    return { gas, brake };
+  }
+
+  setSteerHelp(mode) {
+    if (mode === this.steerHelp) return;
+    this.steerHelp = mode;
+    this.acKeys.reset(); this.aga.reset(); this.agaTime = 0;
+    if (mode === 'aga' && !this.aga.cal) this.aga.cal = calibrateSteering(this.aga.files);
+  }
+
+  // AC's stability control assist, 0..1 (cfg/assists.ini STABILITY_CONTROL / 100)
+  get stability() { return this.car.aids.stability.gain; }
+  set stability(v) { this.car.aids.stability.gain = Math.max(0, v); }
+
   reset(position, yaw) {
     const c = this.car;
     c.forceRotation([Math.sin(yaw), 0, Math.cos(yaw)]);
@@ -163,26 +206,19 @@ export class AcVehicle {
   // one game step of `dt` (the caller steps at stepSize)
   step(dt, raw) {
     const c = this.car, ctl = c.controls, d = this.drivetrain;
-    // steering: a gamepad's stick is the wheel; keys turn it at AC's keyboard rates, less lock at speed
-    let steer = raw.steer || 0;
-    if (!raw.analogSteer && raw.steerKey !== undefined) {
-      const key = raw.steerKey, s = this.keySteer;
-      const rate = key === 0 ? 1.8 : Math.sign(key) !== Math.sign(s) && s !== 0 ? 2.5 : 1.75;
-      this.keySteer += Math.max(-rate * dt, Math.min(rate * dt, key - s));
-      steer = this.keySteer / (1 + this.speed * 0.75 * 0.06);
-    }
-    ctl.steer = Math.max(-1, Math.min(1, steer));
-    let gas = raw.throttle || 0, brake = raw.brake || 0;
-    // the arcade automatic: hold the brake at a stop to reverse, in reverse the pedals swap
+    // the arcade automatic: hold the brake at a stop to reverse; in reverse the pedals swap
     ctl.requestedGear = -1;
+    let swap = false;
     if (d.mode === 'auto') {
+      const gas = raw.throttle || 0, brake = raw.brake || 0;
       const box = c.drivetrain, gear = box.currentGear, stopped = Math.abs(this.speed) < 1;
       if (stopped && brake > 0.3 && gas < 0.05 && gear >= 2 && !box.isChangingGear) this.revTimer = (this.revTimer || 0) + dt; else this.revTimer = 0;
       if (this.revTimer > 0.4) { ctl.requestedGear = 0; this.revTimer = 0; }
       else if (gear === 0 && stopped && gas > 0.3) ctl.requestedGear = 2;
       else if (gear === 1 && gas > 0.05 && !box.isChangingGear) ctl.requestedGear = 2;
-      if (gear === 0) [gas, brake] = [brake, gas];
+      swap = gear === 0;
     }
+    const { gas, brake } = this.#drive(dt, raw, swap);
     ctl.gas = gas;
     ctl.brake = brake;
     ctl.handBrake = raw.handbrake || 0;

@@ -183,7 +183,9 @@ body.paused #hud .hud-tl, body.paused #hud .ticker { visibility: hidden; }
 }
 .cl-info span { min-width: 0; padding: calc(3 * var(--u)) calc(4 * var(--u)); margin: calc(-3 * var(--u)) calc(-4 * var(--u)); border-radius: calc(4 * var(--u)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cl-info span:nth-child(n + 2) { text-align: center; }
-.cl-info span:last-child { text-align: right; }
+.cl-info span:nth-child(4) { text-align: right; }
+.cl-info span.aids { grid-column: 1 / -1; text-align: left; margin-top: calc(3 * var(--u)); }
+.cl-info span.aids:empty { display: none; }
 
 .dash:has(.cluster.compact) { width: calc(230 * var(--u)); }
 .cluster.compact { padding: calc(10 * var(--u)) calc(12 * var(--u)) calc(8 * var(--u)); }
