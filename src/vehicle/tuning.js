@@ -337,8 +337,10 @@ function makeProfile(id) {
   }
 
   const STOCK = DEFAULT_SETUPS[id] ? fill(stockSetup(), DEFAULT_SETUPS[id]) : stockSetup();
+  // Built-in setups listed under Stock; the car's own numbers stay selectable once a default replaces them.
+  const PRESETS = DEFAULT_SETUPS[id] ? { 'Old stock': stockSetup() } : {};
   return {
-    id, C, BASE, RANGES, ENGINES, ENGINE_ORDER: C.engineOrder, STOCK, ui: C.ui, tyre: C.tyre,
+    id, C, BASE, RANGES, ENGINES, ENGINE_ORDER: C.engineOrder, STOCK, PRESETS, ui: C.ui, tyre: C.tyre,
     make: C.make, staticCompression, tyreRadius, wheelMass, applySetup,
     sanitize: x => fill(STOCK, x),
 
@@ -348,7 +350,29 @@ function makeProfile(id) {
 
 export const clone = o => JSON.parse(JSON.stringify(o));
 
-const DEFAULT_SETUPS = { defender: null, s15: null };
+const DEFAULT_SETUPS = {
+  defender: null,
+  s15: {
+    v: 4, car: 's15',
+    engine: { preset: 'factory', torque: 1.5, revs: 0 },
+    gearbox: { manual: [2.833, 1.764, 1.289, 1, 0.833], manualRev: 3.818, final: 3.91 },
+    tyres: { size: 26, width: 245, pressF: 35, pressR: 30, grip: 1.14 },
+    suspension: {
+      lift: 0,
+      front: { k: 70500, bump: 4800, rebound: 8000, arb: 32000, travel: 0.16, rc: 0.05, camber: -1 },
+      rear: { k: 60000, bump: 3600, rebound: 7500, arb: 9500, travel: 0.16, rc: 0.09, camber: -1 },
+    },
+    brakes: { force: 1, bias: 0.5787, handbrake: 1 },
+    steering: { lock: 45.5, ratio: 9 },
+    assist: {
+      kbdIn: 3.4, kbdOut: 2.3, kbdUndersteer: 0.7, kbdOversteer: 0.35,
+      stab: 0.6, stabSpeed: 5, under: 0.8,
+      slow: 0.6, slowStart: 4.5, slowEnd: 45,
+      limit: 1, limitStart: 10, limitEnd: 40,
+    },
+    diff: { type: 'welded', preload: 80, power: 0.6, coast: 0.35 },
+  },
+};
 
 const profiles = {};
 export const carTuning = id => { const k = CARS[id] ? id : 'defender'; return profiles[k] || (profiles[k] = makeProfile(k)); };

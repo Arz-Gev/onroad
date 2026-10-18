@@ -321,17 +321,18 @@ export class TuningPanel {
     const names = Object.keys(this.state.setups), cur = this.matchName();
     this.sel.querySelector('span').textContent = cur || 'Custom (unsaved)';
     this.sel.classList.toggle('custom', !cur);
-    const opt = (n, stock) => {
+    const opt = (n, stock, preset) => {
       const on = stock ? cur === 'Stock' : n === cur;
-      return `<button type="button" class="tn-opt" role="option" aria-selected="${on}" data-act="pick" data-name="${escapeHTML(n)}"${stock ? ' data-stock="1"' : ''}><span>${escapeHTML(n)}</span>${icon('check')}</button>`;
+      return `<button type="button" class="tn-opt" role="option" aria-selected="${on}" data-act="pick" data-name="${escapeHTML(n)}"${stock ? ' data-stock="1"' : ''}${preset ? ' data-preset="1"' : ''}><span>${escapeHTML(n)}</span>${icon('check')}</button>`;
     };
-    this.menu.innerHTML = opt('Stock', true) + '<div class="tn-sep"></div>'
+    this.menu.innerHTML = opt('Stock', true) + Object.keys(this.T.PRESETS).map(n => opt(n, false, true)).join('') + '<div class="tn-sep"></div>'
       + (names.length ? names.map(n => opt(n, false)).join('') : '<div class="tn-none">No saved setups yet</div>');
   }
   setMenu(on) { this.menu.hidden = !on; this.sel.setAttribute('aria-expanded', String(on)); }
   matchName() {
     const cur = JSON.stringify(this.setup);
     if (cur === JSON.stringify(this.T.STOCK)) return 'Stock';
+    for (const [n, s] of Object.entries(this.T.PRESETS)) if (JSON.stringify(s) === cur) return n;
     for (const [n, s] of Object.entries(this.state.setups)) if (JSON.stringify(s) === cur) return n;
     return '';
   }
@@ -373,7 +374,7 @@ export class TuningPanel {
     if (d.act === 'pick') {
       const stock = !!d.stock;
       this.setMenu(false);
-      this.state.setup = stock ? clone(this.T.STOCK) : this.T.sanitize(this.state.setups[d.name]);
+      this.state.setup = stock ? clone(this.T.STOCK) : d.preset ? clone(this.T.PRESETS[d.name]) : this.T.sanitize(this.state.setups[d.name]);
       if (stock) this.state.ui.sel = -1;
       this.apply();
       this.save();
